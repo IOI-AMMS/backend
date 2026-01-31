@@ -23,7 +23,7 @@ VALUES (
         '00000000-0000-0000-0000-000000000002',
         '00000000-0000-0000-0000-000000000001',
         'admin@ioi.com',
-        '$2a$10$rDkQ.zS1F8S5X5P5Y5Y5YeY5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y',
+        '$2a$10$haKvQ.JAtQhpRVjc0LZRDOEHp0wJWu5.lm7OveDFAEncGArashS0i',
         'manager',
         'Admin',
         'User'
