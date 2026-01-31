@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 
 	"ioi-amms/internal/config"
@@ -47,14 +48,14 @@ func main() {
 }
 
 func runMigrations(cfg *config.Config) error {
-	dbURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		cfg.Database.User,
-		cfg.Database.Password,
-		cfg.Database.Host,
-		cfg.Database.Port,
-		cfg.Database.Name,
-		cfg.Database.SSLMode,
-	)
+	// Construct database URL safely using net/url
+	dbURI := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(cfg.Database.User, cfg.Database.Password),
+		Host:     fmt.Sprintf("%s:%s", cfg.Database.Host, cfg.Database.Port),
+		Path:     cfg.Database.Name,
+		RawQuery: fmt.Sprintf("sslmode=%s", cfg.Database.SSLMode),
+	}
 
 	// Point to the migrations folder inside the container
 	// Dockerfile copies /app/migrations
@@ -67,7 +68,7 @@ func runMigrations(cfg *config.Config) error {
 		}
 	}
 
-	m, err := migrate.New(sourceURL, dbURL)
+	m, err := migrate.New(sourceURL, dbURI.String())
 	if err != nil {
 		return fmt.Errorf("failed to create migrate instance: %w", err)
 	}
