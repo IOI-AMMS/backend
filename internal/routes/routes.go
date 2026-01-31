@@ -40,6 +40,11 @@ func NewRouter(db database.Service, cfg *config.Config) http.Handler {
 	woHandler := handler.NewWorkOrderHandler(woRepo)
 	locationHandler := handler.NewLocationHandler(locationRepo)
 
+	// Create user handler with existing repository (userRepo was used in auth, but it's local in that func)
+	// We should initialize userRepo here at top level
+	userRepo := repository.NewUserRepository(db.Pool())
+	userHandler := handler.NewUserHandler(userRepo)
+
 	// Initialize storage service (optional, log warning if unavailable)
 	var fileHandler *handler.FileHandler
 	storageService, err := storage.NewService(cfg)
@@ -52,6 +57,7 @@ func NewRouter(db database.Service, cfg *config.Config) http.Handler {
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
 		// Auth routes (public)
+		// RegisterAuthRoutes creates its own userRepo, which is fine
 		RegisterAuthRoutes(r, db)
 
 		// Protected routes (require authentication + tenant isolation)
@@ -67,6 +73,9 @@ func NewRouter(db database.Service, cfg *config.Config) http.Handler {
 
 			// Location routes
 			locationHandler.RegisterRoutes(r)
+
+			// User routes
+			userHandler.RegisterRoutes(r)
 
 			// File routes (if storage available)
 			if fileHandler != nil {
