@@ -1,11 +1,11 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"net/url"
 	"os"
-	"strings"
 
 	"ioi-amms/internal/config"
 	"ioi-amms/internal/server"
@@ -13,6 +13,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -59,7 +60,6 @@ func runMigrations(cfg *config.Config) error {
 	}
 
 	// Point to the migrations folder inside the container
-	// Dockerfile copies to /app/migrations
 	sourceURL := "file:///app/migrations"
 
 	// If running locally (dev), try relative paths
@@ -71,6 +71,32 @@ func runMigrations(cfg *config.Config) error {
 		}
 	}
 
+	// First, check and fix dirty state using direct SQL
+	db, err := sql.Open("postgres", dbURI.String())
+	if err != nil {
+		return fmt.Errorf("failed to connect for dirty check: %w", err)
+	}
+	defer db.Close()
+
+	// Check if schema_migrations exists and is dirty
+	var dirty bool
+	err = db.QueryRow("SELECT dirty FROM schema_migrations LIMIT 1").Scan(&dirty)
+	if err == nil && dirty {
+		slog.Warn("Dirty database detected, resetting schema_migrations table")
+		// Drop the schema_migrations table to reset state
+		_, _ = db.Exec("DROP TABLE IF EXISTS schema_migrations")
+		// Also drop all tables created by partial migration
+		_, _ = db.Exec("DROP TABLE IF EXISTS users CASCADE")
+		_, _ = db.Exec("DROP TABLE IF EXISTS locations CASCADE")
+		_, _ = db.Exec("DROP TABLE IF EXISTS assets CASCADE")
+		_, _ = db.Exec("DROP TABLE IF EXISTS work_orders CASCADE")
+		_, _ = db.Exec("DROP TABLE IF EXISTS attachments CASCADE")
+		_, _ = db.Exec("DROP TABLE IF EXISTS work_order_attachments CASCADE")
+		_, _ = db.Exec("DROP TABLE IF EXISTS asset_attachments CASCADE")
+	}
+	db.Close()
+
+	// Now run migrations fresh
 	m, err := migrate.New(sourceURL, dbURI.String())
 	if err != nil {
 		return fmt.Errorf("failed to create migrate instance: %w", err)
@@ -78,26 +104,7 @@ func runMigrations(cfg *config.Config) error {
 	defer m.Close()
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		// Check if it's a dirty database error
-		if strings.Contains(err.Error(), "Dirty database") {
-			slog.Warn("Dirty database detected, dropping and rebuilding schema")
-			// Drop all tables and schema_migrations
-			if dropErr := m.Drop(); dropErr != nil {
-				return fmt.Errorf("failed to drop database: %w", dropErr)
-			}
-			// Need new migrate instance after Drop
-			m2, err := migrate.New(sourceURL, dbURI.String())
-			if err != nil {
-				return fmt.Errorf("failed to create new migrate instance: %w", err)
-			}
-			defer m2.Close()
-			// Retry migration from scratch
-			if retryErr := m2.Up(); retryErr != nil && retryErr != migrate.ErrNoChange {
-				return fmt.Errorf("failed to run migrate up after drop: %w", retryErr)
-			}
-		} else {
-			return fmt.Errorf("failed to run migrate up: %w", err)
-		}
+		return fmt.Errorf("failed to run migrate up: %w", err)
 	}
 
 	slog.Info("Database migrations applied successfully")
