@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"strings"
 
 	"ioi-amms/internal/config"
 	"ioi-amms/internal/server"
@@ -74,9 +75,23 @@ func runMigrations(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to create migrate instance: %w", err)
 	}
+	defer m.Close()
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to run migrate up: %w", err)
+		// Check if it's a dirty database error
+		if strings.Contains(err.Error(), "Dirty database") {
+			slog.Warn("Dirty database detected, forcing migration reset")
+			// Force to version 0 (clean slate) then retry
+			if forceErr := m.Force(0); forceErr != nil {
+				return fmt.Errorf("failed to force migration version: %w", forceErr)
+			}
+			// Retry after force
+			if retryErr := m.Up(); retryErr != nil && retryErr != migrate.ErrNoChange {
+				return fmt.Errorf("failed to run migrate up after force: %w", retryErr)
+			}
+		} else {
+			return fmt.Errorf("failed to run migrate up: %w", err)
+		}
 	}
 
 	slog.Info("Database migrations applied successfully")
