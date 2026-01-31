@@ -80,14 +80,20 @@ func runMigrations(cfg *config.Config) error {
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		// Check if it's a dirty database error
 		if strings.Contains(err.Error(), "Dirty database") {
-			slog.Warn("Dirty database detected, forcing migration reset")
-			// Force to version 0 (clean slate) then retry
-			if forceErr := m.Force(0); forceErr != nil {
-				return fmt.Errorf("failed to force migration version: %w", forceErr)
+			slog.Warn("Dirty database detected, dropping and rebuilding schema")
+			// Drop all tables and schema_migrations
+			if dropErr := m.Drop(); dropErr != nil {
+				return fmt.Errorf("failed to drop database: %w", dropErr)
 			}
-			// Retry after force
-			if retryErr := m.Up(); retryErr != nil && retryErr != migrate.ErrNoChange {
-				return fmt.Errorf("failed to run migrate up after force: %w", retryErr)
+			// Need new migrate instance after Drop
+			m2, err := migrate.New(sourceURL, dbURI.String())
+			if err != nil {
+				return fmt.Errorf("failed to create new migrate instance: %w", err)
+			}
+			defer m2.Close()
+			// Retry migration from scratch
+			if retryErr := m2.Up(); retryErr != nil && retryErr != migrate.ErrNoChange {
+				return fmt.Errorf("failed to run migrate up after drop: %w", retryErr)
 			}
 		} else {
 			return fmt.Errorf("failed to run migrate up: %w", err)
