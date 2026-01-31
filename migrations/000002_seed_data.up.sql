@@ -1,6 +1,3 @@
--- +goose Up
--- +goose StatementBegin
-
 -- Insert default tenant
 INSERT INTO
     tenants (id, name, settings)
@@ -31,12 +28,3 @@ VALUES (
         'Admin',
         'User'
     );
-
--- +goose StatementEnd
-
--- +goose Down
--- +goose StatementBegin
-DELETE FROM users WHERE email = 'admin@ioi.com';
-
-DELETE FROM tenants WHERE name = 'IOI Default Tenant';
--- +goose StatementEnd
