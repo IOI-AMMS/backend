@@ -58,12 +58,14 @@ func runMigrations(cfg *config.Config) error {
 	}
 
 	// Point to the migrations folder inside the container
-	// Dockerfile copies /app/migrations
-	sourceURL := "file://migrations"
+	// Dockerfile copies to /app/migrations
+	sourceURL := "file:///app/migrations"
 
-	// If running locally (not docker), adjust path
-	if _, err := os.Stat("migrations"); os.IsNotExist(err) {
-		if _, err := os.Stat("../migrations"); err == nil {
+	// If running locally (dev), try relative paths
+	if _, err := os.Stat("/app/migrations"); os.IsNotExist(err) {
+		if _, err := os.Stat("migrations"); err == nil {
+			sourceURL = "file://migrations"
+		} else if _, err := os.Stat("../migrations"); err == nil {
 			sourceURL = "file://../migrations"
 		}
 	}
