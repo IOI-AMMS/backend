@@ -30,7 +30,7 @@ func NewWorkOrderRepository(db *pgxpool.Pool) *WorkOrderRepository {
 func (r *WorkOrderRepository) FindByID(ctx context.Context, id string) (*model.WorkOrder, error) {
 	query := `
 		SELECT 
-			w.id, w.tenant_id, w.asset_id, w.status, w.origin, w.priority,
+			w.id, w.tenant_id, w.asset_id, w.status::text, w.origin::text, w.priority::text,
 			w.description, w.created_at, w.updated_at,
 			COALESCE(a.name, '') as asset_name
 		FROM work_orders w
@@ -122,7 +122,7 @@ func (r *WorkOrderRepository) List(ctx context.Context, params model.WorkOrderLi
 
 	query := fmt.Sprintf(`
 		SELECT 
-			w.id, w.tenant_id, w.asset_id, w.status, w.origin, w.priority,
+			w.id, w.tenant_id, w.asset_id, w.status::text, w.origin::text, w.priority::text,
 			w.description, w.created_at, w.updated_at,
 			COALESCE(a.name, '') as asset_name
 		FROM work_orders w

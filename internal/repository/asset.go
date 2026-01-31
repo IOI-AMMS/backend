@@ -31,7 +31,7 @@ func (r *AssetRepository) FindByID(ctx context.Context, id string) (*model.Asset
 	query := `
 		SELECT 
 			a.id, a.tenant_id, a.parent_id, a.location_id, a.name, 
-			a.status, a.criticality, a.last_inspection, a.created_at, a.updated_at,
+			a.status::text, a.criticality::text, a.last_inspection, a.created_at, a.updated_at,
 			COALESCE(l.name, '') as location_name
 		FROM assets a
 		LEFT JOIN locations l ON a.location_id = l.id
@@ -124,7 +124,7 @@ func (r *AssetRepository) List(ctx context.Context, params model.AssetListParams
 	query := fmt.Sprintf(`
 		SELECT 
 			a.id, a.tenant_id, a.parent_id, a.location_id, a.name, 
-			a.status, a.criticality, a.last_inspection, a.created_at, a.updated_at,
+			a.status::text, a.criticality::text, a.last_inspection, a.created_at, a.updated_at,
 			COALESCE(l.name, '') as location_name
 		FROM assets a
 		LEFT JOIN locations l ON a.location_id = l.id
