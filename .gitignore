@@ -1,0 +1,69 @@
+# ===========================================
+# IOI AMMS - Git Ignore
+# ===========================================
+
+# ---- Stitch Folder ----
+stich/
+stitch/
+
+
+# ---- Go ----
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+go.work
+
+# ---- Backend Build ----
+backend/tmp/
+backend/bin/
+
+# ---- Environment ----
+.env
+.env.local
+.env.*.local
+*.env
+
+# ---- IDE ----
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ---- macOS ----
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ---- Docker ----
+docker-compose.override.yml
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- Database Dumps ----
+*.sql
+*.dump
+!migrations/*.sql
+
+# ---- MinIO Local Data ----
+minio_data/
+data/
+
+# ---- Node (if frontend added later) ----
+node_modules/
+.nuxt/
+.output/
+dist/
+
+# ---- Secrets ----
+*.pem
+*.key
+secrets/

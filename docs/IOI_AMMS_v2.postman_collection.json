@@ -1,0 +1,529 @@
+{
+	"info": {
+		"name": "IOI AMMS v2",
+		"description": "API Collection for IOI Asset Management System v2\n\nLast Updated: 2026-01-31",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.token) {",
+									"    pm.collectionVariables.set(\"amms_token\", jsonData.token);",
+									"    console.log(\"Token updated successfully\");",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@ioi.com\",\n    \"password\": \"password123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						}
+					}
+				},
+				{
+					"name": "Refresh Token",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"refreshToken\": \"<refresh_token_here>\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/refresh",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "refresh"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Assets",
+			"item": [
+				{
+					"name": "List Assets",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/assets?page=1&limit=10",
+							"host": ["{{base_url}}"],
+							"path": ["assets"],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "limit", "value": "10" },
+								{ "key": "status", "value": "operational", "disabled": true },
+								{ "key": "criticality", "value": "high", "disabled": true },
+								{ "key": "search", "value": "", "disabled": true }
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Asset",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/assets/:id",
+							"host": ["{{base_url}}"],
+							"path": ["assets", ":id"],
+							"variable": [
+								{ "key": "id", "value": "uuid-here" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Asset",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"New Generator X-500\",\n    \"status\": \"pending\",\n    \"criticality\": \"medium\",\n    \"locationId\": null,\n    \"parentId\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/assets",
+							"host": ["{{base_url}}"],
+							"path": ["assets"]
+						}
+					}
+				},
+				{
+					"name": "Update Asset",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Updated Generator\",\n    \"status\": \"operational\",\n    \"criticality\": \"high\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/assets/:id",
+							"host": ["{{base_url}}"],
+							"path": ["assets", ":id"],
+							"variable": [
+								{ "key": "id", "value": "uuid-here" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Delete Asset",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/assets/:id",
+							"host": ["{{base_url}}"],
+							"path": ["assets", ":id"],
+							"variable": [
+								{ "key": "id", "value": "uuid-here" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Locations",
+			"item": [
+				{
+					"name": "List Locations",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/locations",
+							"host": ["{{base_url}}"],
+							"path": ["locations"]
+						}
+					}
+				},
+				{
+					"name": "Get Location",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/locations/:id",
+							"host": ["{{base_url}}"],
+							"path": ["locations", ":id"],
+							"variable": [
+								{ "key": "id", "value": "uuid-here" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Location Children",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/locations/:id/children",
+							"host": ["{{base_url}}"],
+							"path": ["locations", ":id", "children"],
+							"variable": [
+								{ "key": "id", "value": "uuid-here" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Location",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Building A\",\n    \"type\": \"Building\",\n    \"parentId\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/locations",
+							"host": ["{{base_url}}"],
+							"path": ["locations"]
+						}
+					}
+				},
+				{
+					"name": "Update Location",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Building A - Updated\",\n    \"type\": \"Building\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/locations/:id",
+							"host": ["{{base_url}}"],
+							"path": ["locations", ":id"],
+							"variable": [
+								{ "key": "id", "value": "uuid-here" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Delete Location",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/locations/:id",
+							"host": ["{{base_url}}"],
+							"path": ["locations", ":id"],
+							"variable": [
+								{ "key": "id", "value": "uuid-here" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Work Orders",
+			"item": [
+				{
+					"name": "List Work Orders",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/work-orders?page=1&limit=10",
+							"host": ["{{base_url}}"],
+							"path": ["work-orders"],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "limit", "value": "10" },
+								{ "key": "status", "value": "Draft", "disabled": true },
+								{ "key": "priority", "value": "High", "disabled": true },
+								{ "key": "assetId", "value": "", "disabled": true }
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Work Order",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/work-orders/:id",
+							"host": ["{{base_url}}"],
+							"path": ["work-orders", ":id"],
+							"variable": [
+								{ "key": "id", "value": "uuid-here" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Work Order",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"origin\": \"CM\",\n    \"priority\": \"High\",\n    \"description\": \"Describe the issue here\",\n    \"assetId\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/work-orders",
+							"host": ["{{base_url}}"],
+							"path": ["work-orders"]
+						}
+					}
+				},
+				{
+					"name": "Update Work Order",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"priority\": \"Critical\",\n    \"description\": \"Updated description\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/work-orders/:id",
+							"host": ["{{base_url}}"],
+							"path": ["work-orders", ":id"],
+							"variable": [
+								{ "key": "id", "value": "uuid-here" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Update Status",
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"In_Progress\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/work-orders/:id/status",
+							"host": ["{{base_url}}"],
+							"path": ["work-orders", ":id", "status"],
+							"variable": [
+								{ "key": "id", "value": "uuid-here" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Files",
+			"item": [
+				{
+					"name": "Upload File",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": ""
+								},
+								{
+									"key": "assetId",
+									"value": "optional-asset-uuid",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/upload",
+							"host": ["{{base_url}}"],
+							"path": ["upload"]
+						},
+						"description": "Upload a file to MinIO storage. Max size: 10MB. Optionally associate with an asset."
+					}
+				},
+				{
+					"name": "Download File",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/files/:bucket/:objectPath",
+							"host": ["{{base_url}}"],
+							"path": ["files", ":bucket", ":objectPath"],
+							"variable": [
+								{ "key": "bucket", "value": "attachments" },
+								{ "key": "objectPath", "value": "tenants/tenant-id/assets/asset-id/filename.txt" }
+							]
+						},
+						"description": "Get presigned URL and redirect to download the file."
+					}
+				},
+				{
+					"name": "Delete File",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/files/:bucket/:objectPath",
+							"host": ["{{base_url}}"],
+							"path": ["files", ":bucket", ":objectPath"],
+							"variable": [
+								{ "key": "bucket", "value": "attachments" },
+								{ "key": "objectPath", "value": "tenants/tenant-id/assets/asset-id/filename.txt" }
+							]
+						},
+						"description": "Delete a file. Only files owned by your tenant can be deleted."
+					}
+				}
+			]
+		},
+		{
+			"name": "System",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8080/health",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8080",
+							"path": ["health"]
+						}
+					}
+				},
+				{
+					"name": "Root",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8080/",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8080",
+							"path": [""]
+						}
+					}
+				}
+			]
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{amms_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [""]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [""]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080/api/v1",
+			"type": "string"
+		},
+		{
+			"key": "amms_token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
