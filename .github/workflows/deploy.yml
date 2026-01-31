@@ -18,8 +18,9 @@ on:
       - main
       - develop
     paths:
-      - 'backend/**'
-      - '.github/workflows/deploy.yml'
+      - '**'
+      - '!docs/**'
+      - '!*.md'
   workflow_dispatch:
     inputs:
       tag:
@@ -71,8 +72,8 @@ jobs:
       - name: Build and Push
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
-          file: ./backend/Dockerfile.prod
+          context: .
+          file: ./Dockerfile.prod
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
