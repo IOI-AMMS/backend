@@ -13,13 +13,14 @@ type contextKey string
 
 const UserContextKey contextKey = "user"
 
-// Role constants matching PRD Section 4
+// Role constants matching v1.1 schema (Capitalized)
 const (
-	RoleTechnician = "technician"
-	RoleSupervisor = "supervisor"
-	RoleStoreman   = "storeman"
-	RoleManager    = "manager"
-	RoleAdmin      = "admin"
+	RoleTechnician = "Technician"
+	RoleSupervisor = "Supervisor"
+	RoleStoreman   = "Storeman"
+	RoleManager    = "Manager"
+	RoleAdmin      = "Admin"
+	RoleViewer     = "Viewer"
 )
 
 // Permission constants for fine-grained access control
@@ -35,6 +36,9 @@ const (
 	PermissionInventoryWrite = "inventory:write"
 	PermissionUserManage     = "user:manage"
 	PermissionReportView     = "report:view"
+	PermissionTenantSettings = "tenant:settings"
+	PermissionAuditRead      = "audit:read"
+	PermissionSystemHealth   = "system:health"
 )
 
 // RolePermissions maps roles to their allowed permissions
@@ -65,6 +69,9 @@ var RolePermissions = map[string][]string{
 		PermissionInventoryRead, PermissionInventoryWrite,
 		PermissionReportView,
 		PermissionUserManage,
+		PermissionTenantSettings,
+		PermissionAuditRead,
+		PermissionSystemHealth,
 	},
 }
 

@@ -1,7 +1,7 @@
 {
 	"info": {
 		"name": "IOI AMMS v2",
-		"description": "API Collection for IOI Asset Management System v2\n\nLast Updated: 2026-01-31",
+		"description": "API Collection for IOI Asset Management System v2\n\nSchema Version: v1.1\nLast Updated: 2026-02-01",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -83,13 +83,13 @@
 					}
 				},
 				{
-					"name": "Create User",
+					"name": "Create User (v1.1)",
 					"request": {
 						"method": "POST",
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"email\": \"tech@ioi.com\",\n    \"password\": \"password123\",\n    \"firstName\": \"John\",\n    \"lastName\": \"Technician\",\n    \"role\": \"technician\"\n}",
+							"raw": "{\n    \"email\": \"tech@ioi.com\",\n    \"password\": \"password123\",\n    \"fullName\": \"John Technician\",\n    \"role\": \"Technician\",\n    \"orgUnitId\": null\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -130,7 +130,7 @@
 			]
 		},
 		{
-			"name": "Assets",
+			"name": "Assets (v1.1)",
 			"item": [
 				{
 					"name": "List Assets",
@@ -144,8 +144,9 @@
 							"query": [
 								{ "key": "page", "value": "1" },
 								{ "key": "limit", "value": "10" },
-								{ "key": "status", "value": "operational", "disabled": true },
-								{ "key": "criticality", "value": "high", "disabled": true },
+								{ "key": "status", "value": "Active", "disabled": true },
+								{ "key": "status", "value": "Down", "disabled": true },
+								{ "key": "orgUnitId", "value": "", "disabled": true },
 								{ "key": "search", "value": "", "disabled": true }
 							]
 						}
@@ -167,13 +168,13 @@
 					}
 				},
 				{
-					"name": "Create Asset",
+					"name": "Create Asset (v1.1)",
 					"request": {
 						"method": "POST",
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"name\": \"New Generator X-500\",\n    \"status\": \"pending\",\n    \"criticality\": \"medium\",\n    \"locationId\": null,\n    \"parentId\": null\n}",
+							"raw": "{\n    \"name\": \"New Generator X-500\",\n    \"status\": \"Draft\",\n    \"isFieldRelated\": true,\n    \"locationId\": null,\n    \"orgUnitId\": null,\n    \"parentId\": null,\n    \"manufacturer\": \"Caterpillar\",\n    \"modelNumber\": \"CAT-500\",\n    \"specs\": {\"powerKw\": 500, \"fuelType\": \"diesel\"}\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -188,13 +189,13 @@
 					}
 				},
 				{
-					"name": "Update Asset",
+					"name": "Update Asset (v1.1)",
 					"request": {
 						"method": "PUT",
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"name\": \"Updated Generator\",\n    \"status\": \"operational\",\n    \"criticality\": \"high\"\n}",
+							"raw": "{\n    \"name\": \"Updated Generator\",\n    \"status\": \"Active\",\n    \"isFieldRelated\": true,\n    \"manufacturer\": \"Caterpillar\",\n    \"modelNumber\": \"CAT-600\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -336,7 +337,7 @@
 			]
 		},
 		{
-			"name": "Work Orders",
+			"name": "Work Orders (v1.1)",
 			"item": [
 				{
 					"name": "List Work Orders",
@@ -350,7 +351,7 @@
 							"query": [
 								{ "key": "page", "value": "1" },
 								{ "key": "limit", "value": "10" },
-								{ "key": "status", "value": "Draft", "disabled": true },
+								{ "key": "status", "value": "Requested", "disabled": true },
 								{ "key": "priority", "value": "High", "disabled": true },
 								{ "key": "assetId", "value": "", "disabled": true }
 							]
@@ -373,13 +374,13 @@
 					}
 				},
 				{
-					"name": "Create Work Order",
+					"name": "Create Work Order (v1.1)",
 					"request": {
 						"method": "POST",
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"origin\": \"CM\",\n    \"priority\": \"High\",\n    \"description\": \"Describe the issue here\",\n    \"assetId\": null\n}",
+							"raw": "{\n    \"origin\": \"Manual_Request\",\n    \"priority\": \"High\",\n    \"title\": \"Generator Maintenance\",\n    \"description\": \"Engine making unusual noise\",\n    \"assetId\": null\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -471,7 +472,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["upload"]
 						},
-						"description": "Upload a file to MinIO storage. Max size: 10MB. Optionally associate with an asset."
+						"description": "Upload a file to MinIO storage. Max size: 10MB."
 					}
 				},
 				{
@@ -487,8 +488,7 @@
 								{ "key": "bucket", "value": "attachments" },
 								{ "key": "objectPath", "value": "tenants/tenant-id/assets/asset-id/filename.txt" }
 							]
-						},
-						"description": "Get presigned URL and redirect to download the file."
+						}
 					}
 				},
 				{
@@ -504,8 +504,75 @@
 								{ "key": "bucket", "value": "attachments" },
 								{ "key": "objectPath", "value": "tenants/tenant-id/assets/asset-id/filename.txt" }
 							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin",
+			"item": [
+				{
+					"name": "Audit Logs",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/audit-logs?page=1&limit=20",
+							"host": ["{{base_url}}"],
+							"path": ["audit-logs"],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "limit", "value": "20" },
+								{ "key": "action", "value": "create", "disabled": true },
+								{ "key": "entityType", "value": "asset", "disabled": true }
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Tenant Settings",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/tenant/settings",
+							"host": ["{{base_url}}"],
+							"path": ["tenant", "settings"]
+						}
+					}
+				},
+				{
+					"name": "Update Tenant Settings",
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"settings\": {\n        \"agileMode\": true\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
-						"description": "Delete a file. Only files owned by your tenant can be deleted."
+						"url": {
+							"raw": "{{base_url}}/tenant/settings",
+							"host": ["{{base_url}}"],
+							"path": ["tenant", "settings"]
+						}
+					}
+				},
+				{
+					"name": "System Health (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/system/health",
+							"host": ["{{base_url}}"],
+							"path": ["system", "health"]
+						}
 					}
 				}
 			]
@@ -546,6 +613,229 @@
 							"path": [""]
 						}
 					}
+		}
+		]
+		},
+		{
+			"name": "Parts",
+			"description": "Spare parts catalog management",
+			"item": [
+				{
+					"name": "List Parts",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/parts?category=&search=&page=1&limit=10",
+							"host": ["{{base_url}}"],
+							"path": ["parts"],
+							"query": [
+								{"key": "category", "value": ""},
+								{"key": "search", "value": ""},
+								{"key": "page", "value": "1"},
+								{"key": "limit", "value": "10"}
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Part",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"sku\": \"FLT-001\",\n    \"name\": \"Oil Filter\",\n    \"category\": \"Filters\",\n    \"uom\": \"Each\",\n    \"minStockLevel\": 10,\n    \"isStockItem\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/parts",
+							"host": ["{{base_url}}"],
+							"path": ["parts"]
+						}
+					}
+				},
+				{
+					"name": "Get Part",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/parts/:id",
+							"host": ["{{base_url}}"],
+							"path": ["parts", ":id"],
+							"variable": [{"key": "id", "value": "part-uuid"}]
+						}
+					}
+				},
+				{
+					"name": "Update Part",
+					"request": {
+						"method": "PUT",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Oil Filter - Updated\",\n    \"minStockLevel\": 15\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/parts/:id",
+							"host": ["{{base_url}}"],
+							"path": ["parts", ":id"],
+							"variable": [{"key": "id", "value": "part-uuid"}]
+						}
+					}
+				},
+				{
+					"name": "Delete Part",
+					"request": {
+						"method": "DELETE",
+						"url": {
+							"raw": "{{base_url}}/parts/:id",
+							"host": ["{{base_url}}"],
+							"path": ["parts", ":id"],
+							"variable": [{"key": "id", "value": "part-uuid"}]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Inventory",
+			"description": "Inventory stock and wallet management",
+			"item": [
+				{
+					"name": "List Stock",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/inventory/stock?partId=&locationId=&lowStock=false&page=1&limit=10",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "stock"],
+							"query": [
+								{"key": "partId", "value": ""},
+								{"key": "locationId", "value": ""},
+								{"key": "lowStock", "value": "false"},
+								{"key": "page", "value": "1"},
+								{"key": "limit", "value": "10"}
+							]
+						}
+					}
+				},
+				{
+					"name": "Upsert Stock",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"partId\": \"part-uuid\",\n    \"locationId\": \"location-uuid\",\n    \"quantityOnHand\": 50,\n    \"binLabel\": \"A-01-03\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory/stock",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "stock"]
+						}
+					}
+				},
+				{
+					"name": "Adjust Stock",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"partId\": \"part-uuid\",\n    \"locationId\": \"location-uuid\",\n    \"delta\": -5\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory/stock/adjust",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "stock", "adjust"]
+						}
+					}
+				},
+				{
+					"name": "My Wallet",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/inventory/wallets",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "wallets"]
+						}
+					}
+				},
+				{
+					"name": "User Wallet",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/inventory/wallets/:userId",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "wallets", ":userId"],
+							"variable": [{"key": "userId", "value": "user-uuid"}]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Phase 12: Hybrid & Settings",
+			"item": [
+				{
+					"name": "Analytics",
+					"item": [
+						{
+							"name": "Get Dashboard Data",
+							"request": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/analytics/dashboard",
+									"host": ["{{base_url}}"],
+									"path": ["analytics", "dashboard"]
+								}
+							}
+						}
+					]
+				},
+				{
+					"name": "Settings",
+					"item": [
+						{
+							"name": "Update Tenant Settings",
+							"request": {
+								"method": "PATCH",
+								"header": [{"key": "Content-Type", "value": "application/json"}],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"settings\": {\n        \"assetCategories\": [\"Hardware\", \"Vehicles\"],\n        \"categoryDefaults\": {\n            \"Hardware\": {\"maintenanceCycleDays\": 180}\n        },\n        \"erpConfig\": {\n            \"enabled\": true,\n            \"provider\": \"SAP\"\n        }\n    }\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/tenant/settings",
+									"host": ["{{base_url}}"],
+									"path": ["tenant", "settings"]
+								}
+							}
+						}
+					]
+				},
+				{
+					"name": "User Management",
+					"item": [
+						{
+							"name": "Update User Role",
+							"request": {
+								"method": "PUT",
+								"header": [{"key": "Content-Type", "value": "application/json"}],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"role\": \"Manager\",\n    \"isActive\": true,\n    \"fullName\": \"Updated Name\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/users/:id",
+									"host": ["{{base_url}}"],
+									"path": ["users", ":id"],
+									"variable": [{"key": "id", "value": "user-uuid"}]
+								}
+							}
+						}
+					]
 				}
 			]
 		}

@@ -26,23 +26,29 @@ func NewAssetRepository(db *pgxpool.Pool) *AssetRepository {
 	return &AssetRepository{db: db}
 }
 
-// FindByID retrieves an asset by ID
+// FindByID retrieves an asset by ID (v1.1 schema)
 func (r *AssetRepository) FindByID(ctx context.Context, id string) (*model.Asset, error) {
 	query := `
 		SELECT 
-			a.id, a.tenant_id, a.parent_id, a.location_id, a.name, 
-			a.status::text, a.criticality::text, a.last_inspection, a.created_at, a.updated_at,
-			COALESCE(l.name, '') as location_name
+			a.id, a.tenant_id, a.parent_id, a.location_id, a.org_unit_id, a.name, 
+			a.status, a.is_field_related, a.is_field_verified,
+			a.manufacturer, a.model_number, a.specs,
+			a.created_at, a.updated_at,
+			COALESCE(l.name, '') as location_name,
+			COALESCE(o.name, '') as org_unit_name
 		FROM assets a
 		LEFT JOIN locations l ON a.location_id = l.id
+		LEFT JOIN org_units o ON a.org_unit_id = o.id
 		WHERE a.id = $1
 	`
 
 	var asset model.Asset
 	err := r.db.QueryRow(ctx, query, id).Scan(
-		&asset.ID, &asset.TenantID, &asset.ParentID, &asset.LocationID, &asset.Name,
-		&asset.Status, &asset.Criticality, &asset.LastInspection, &asset.CreatedAt, &asset.UpdatedAt,
-		&asset.LocationName,
+		&asset.ID, &asset.TenantID, &asset.ParentID, &asset.LocationID, &asset.OrgUnitID, &asset.Name,
+		&asset.Status, &asset.IsFieldRelated, &asset.IsFieldVerified,
+		&asset.Manufacturer, &asset.ModelNumber, &asset.Specs,
+		&asset.CreatedAt, &asset.UpdatedAt,
+		&asset.LocationName, &asset.OrgUnitName,
 	)
 
 	if err != nil {
@@ -55,7 +61,7 @@ func (r *AssetRepository) FindByID(ctx context.Context, id string) (*model.Asset
 	return &asset, nil
 }
 
-// List retrieves assets with filtering and pagination
+// List retrieves assets with filtering and pagination (v1.1 schema)
 func (r *AssetRepository) List(ctx context.Context, params model.AssetListParams) (*model.PaginatedResult[model.Asset], error) {
 	// Build dynamic query
 	var conditions []string
@@ -73,17 +79,13 @@ func (r *AssetRepository) List(ctx context.Context, params model.AssetListParams
 			args = append(args, s)
 			argNum++
 		}
-		conditions = append(conditions, fmt.Sprintf("a.status::text IN (%s)", strings.Join(placeholders, ",")))
+		conditions = append(conditions, fmt.Sprintf("a.status IN (%s)", strings.Join(placeholders, ",")))
 	}
 
-	if len(params.Criticality) > 0 {
-		placeholders := make([]string, len(params.Criticality))
-		for i, c := range params.Criticality {
-			placeholders[i] = fmt.Sprintf("$%d", argNum)
-			args = append(args, c)
-			argNum++
-		}
-		conditions = append(conditions, fmt.Sprintf("a.criticality::text IN (%s)", strings.Join(placeholders, ",")))
+	if params.OrgUnitID != "" {
+		conditions = append(conditions, fmt.Sprintf("a.org_unit_id = $%d", argNum))
+		args = append(args, params.OrgUnitID)
+		argNum++
 	}
 
 	if params.Search != "" {
@@ -123,11 +125,15 @@ func (r *AssetRepository) List(ctx context.Context, params model.AssetListParams
 
 	query := fmt.Sprintf(`
 		SELECT 
-			a.id, a.tenant_id, a.parent_id, a.location_id, a.name, 
-			a.status::text, a.criticality::text, a.last_inspection, a.created_at, a.updated_at,
-			COALESCE(l.name, '') as location_name
+			a.id, a.tenant_id, a.parent_id, a.location_id, a.org_unit_id, a.name, 
+			a.status, a.is_field_related, a.is_field_verified,
+			a.manufacturer, a.model_number, a.specs,
+			a.created_at, a.updated_at,
+			COALESCE(l.name, '') as location_name,
+			COALESCE(o.name, '') as org_unit_name
 		FROM assets a
 		LEFT JOIN locations l ON a.location_id = l.id
+		LEFT JOIN org_units o ON a.org_unit_id = o.id
 		WHERE %s
 		ORDER BY %s %s
 		LIMIT $%d OFFSET $%d
@@ -145,9 +151,11 @@ func (r *AssetRepository) List(ctx context.Context, params model.AssetListParams
 	for rows.Next() {
 		var asset model.Asset
 		err := rows.Scan(
-			&asset.ID, &asset.TenantID, &asset.ParentID, &asset.LocationID, &asset.Name,
-			&asset.Status, &asset.Criticality, &asset.LastInspection, &asset.CreatedAt, &asset.UpdatedAt,
-			&asset.LocationName,
+			&asset.ID, &asset.TenantID, &asset.ParentID, &asset.LocationID, &asset.OrgUnitID, &asset.Name,
+			&asset.Status, &asset.IsFieldRelated, &asset.IsFieldVerified,
+			&asset.Manufacturer, &asset.ModelNumber, &asset.Specs,
+			&asset.CreatedAt, &asset.UpdatedAt,
+			&asset.LocationName, &asset.OrgUnitName,
 		)
 		if err != nil {
 			return nil, err
@@ -166,30 +174,35 @@ func (r *AssetRepository) List(ctx context.Context, params model.AssetListParams
 	}, nil
 }
 
-// Create inserts a new asset
+// Create inserts a new asset (v1.1 schema)
 func (r *AssetRepository) Create(ctx context.Context, asset *model.Asset) error {
 	query := `
-		INSERT INTO assets (tenant_id, parent_id, location_id, name, status, criticality)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO assets (tenant_id, parent_id, location_id, org_unit_id, name, status, 
+			is_field_related, is_field_verified, manufacturer, model_number, specs)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id, created_at, updated_at
 	`
 
 	return r.db.QueryRow(ctx, query,
-		asset.TenantID, asset.ParentID, asset.LocationID, asset.Name, asset.Status, asset.Criticality,
+		asset.TenantID, asset.ParentID, asset.LocationID, asset.OrgUnitID, asset.Name, asset.Status,
+		asset.IsFieldRelated, asset.IsFieldVerified, asset.Manufacturer, asset.ModelNumber, asset.Specs,
 	).Scan(&asset.ID, &asset.CreatedAt, &asset.UpdatedAt)
 }
 
-// Update modifies an existing asset
+// Update modifies an existing asset (v1.1 schema)
 func (r *AssetRepository) Update(ctx context.Context, asset *model.Asset) error {
 	query := `
 		UPDATE assets
-		SET parent_id = $2, location_id = $3, name = $4, status = $5, criticality = $6, updated_at = NOW()
+		SET parent_id = $2, location_id = $3, org_unit_id = $4, name = $5, status = $6,
+			is_field_related = $7, is_field_verified = $8, manufacturer = $9, model_number = $10,
+			specs = $11, updated_at = NOW()
 		WHERE id = $1
 		RETURNING updated_at
 	`
 
 	return r.db.QueryRow(ctx, query,
-		asset.ID, asset.ParentID, asset.LocationID, asset.Name, asset.Status, asset.Criticality,
+		asset.ID, asset.ParentID, asset.LocationID, asset.OrgUnitID, asset.Name, asset.Status,
+		asset.IsFieldRelated, asset.IsFieldVerified, asset.Manufacturer, asset.ModelNumber, asset.Specs,
 	).Scan(&asset.UpdatedAt)
 }
 

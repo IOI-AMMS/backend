@@ -88,11 +88,12 @@ func (h *WorkOrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, wo)
 }
 
-// CreateWorkOrderRequest represents the create work order request body
+// CreateWorkOrderRequest represents the create work order request body (v1.1)
 type CreateWorkOrderRequest struct {
 	AssetID     *string `json:"assetId"`
 	Priority    string  `json:"priority"`
 	Origin      string  `json:"origin"`
+	Title       string  `json:"title"`
 	Description *string `json:"description"`
 }
 
@@ -115,6 +116,11 @@ func (h *WorkOrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Title == "" {
+		errorResponse(w, http.StatusBadRequest, "Title is required")
+		return
+	}
+
 	// Set defaults
 	if req.Priority == "" {
 		req.Priority = model.WOPriorityMedium
@@ -123,9 +129,10 @@ func (h *WorkOrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	wo := &model.WorkOrder{
 		TenantID:    claims.TenantID,
 		AssetID:     req.AssetID,
-		Status:      model.WOStatusDraft,
+		Status:      model.WOStatusRequested, // v1.1 default status
 		Priority:    req.Priority,
 		Origin:      req.Origin,
+		Title:       req.Title,
 		Description: req.Description,
 	}
 
@@ -136,6 +143,13 @@ func (h *WorkOrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusCreated, wo)
+}
+
+// UpdateWorkOrderRequest for updating work orders (v1.1)
+type UpdateWorkOrderRequest struct {
+	Priority    string  `json:"priority"`
+	Title       string  `json:"title"`
+	Description *string `json:"description"`
 }
 
 // Update handles PUT /work-orders/{id}
@@ -153,13 +167,18 @@ func (h *WorkOrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req CreateWorkOrderRequest
+	var req UpdateWorkOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		errorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	existing.Priority = req.Priority
+	if req.Priority != "" {
+		existing.Priority = req.Priority
+	}
+	if req.Title != "" {
+		existing.Title = req.Title
+	}
 	existing.Description = req.Description
 
 	if err := h.repo.Update(r.Context(), existing); err != nil {

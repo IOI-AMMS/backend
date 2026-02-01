@@ -4,7 +4,7 @@ services:
   api:
     container_name: IOI_AMMS
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
@@ -21,7 +21,7 @@ services:
       - db
       - minio
     volumes:
-      - ./backend:/app
+      - .:/app
 
   db:
     image: postgres:16-alpine

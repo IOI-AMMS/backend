@@ -1,6 +1,7 @@
-# IOI AMMS API Specification v1
+# IOI AMMS API Specification v1.1
 
-> **Last Updated:** 2026-01-31  
+> **Last Updated:** 2026-02-01  
+> **Schema Version:** v1.1  
 > **Base URL:** `/api/v1`  
 > **Content-Type:** `application/json`
 
@@ -35,7 +36,7 @@ Exchange credentials for access and refresh tokens.
     "id": "00000000-0000-0000-0000-000000000002",
     "email": "admin@ioi.com",
     "name": "Admin User",
-    "role": "manager",
+    "role": "Admin",
     "tenantId": "00000000-0000-0000-0000-000000000001"
   }
 }
@@ -68,19 +69,94 @@ Refresh an expired access token.
 
 ---
 
-## 2. Roles & Permissions (RBAC)
+## 2. User Management (Admin/Manager)
 
-### Role Hierarchy
+### User Object Schema (v1.1)
+```typescript
+interface User {
+  id: string;           // UUID
+  tenantId: string;     // UUID
+  orgUnitId?: string;   // UUID - Org unit assignment
+  email: string;
+  fullName?: string;    // Single name field (replaces firstName/lastName)
+  role: UserRole;
+  isActive: boolean;    // Active status flag
+  createdAt: string;
+}
+
+type UserRole = 'Technician' | 'Supervisor' | 'Storeman' | 'Manager' | 'Admin' | 'Viewer';
+```
+
+### `GET /users`
+List all users in the tenant.
+
+**Query Parameters:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `role` | string | Filter by role |
+| `page` | int | Page number (default: 1) |
+| `limit` | int | Items per page (default: 10) |
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "uuid...",
+    "tenantId": "uuid...",
+    "orgUnitId": "uuid...",
+    "email": "tech@ioi.com",
+    "fullName": "John Technician",
+    "role": "Technician",
+    "isActive": true,
+    "createdAt": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `POST /users`
+Create a new user.
+
+**Request Body:**
+```json
+{
+  "email": "newuser@ioi.com",
+  "password": "TempPassword123!",
+  "role": "Technician",
+  "fullName": "Jane Smith",
+  "orgUnitId": "uuid-optional"
+}
+```
+
+**Response (201 Created):** Created User object.
+
+### `PUT /users/{id}/password`
+Reset a user's password (admin only).
+
+**Request Body:**
+```json
+{
+  "newPassword": "NewPassword123!"
+}
+```
+
+**Response (200 OK):** `{"message": "Password updated successfully"}`
+
+---
+
+## 3. Roles & Permissions (RBAC) - v1.1
+
+### Role Hierarchy (Capitalized)
 | Role | Description | Access Level |
 |------|-------------|--------------|
-| `technician` | Field technician | Execute assigned WOs, view assets |
-| `supervisor` | Team supervisor | Assign WOs, verify assets, view reports |
-| `storeman` | Inventory manager | Manage inventory and transfers |
-| `manager` | Operations manager | Full access except admin functions |
-| `admin` | System administrator | Full system access |
+| `Technician` | Field technician | Execute assigned WOs, view assets |
+| `Supervisor` | Team supervisor | Assign WOs, verify assets, view reports |
+| `Storeman` | Inventory manager | Manage inventory and transfers |
+| `Manager` | Operations manager | Full access except admin functions |
+| `Admin` | System administrator | Full system access |
+| `Viewer` | Read-only access | View assets and reports only |
 
 ### Role → Permission Matrix
-| Permission | technician | supervisor | storeman | manager | admin |
+| Permission | Technician | Supervisor | Storeman | Manager | Admin |
 |------------|:----------:|:----------:|:--------:|:-------:|:-----:|
 | `asset:read` | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `asset:write` | | ✓ | | ✓ | ✓ |
@@ -93,10 +169,13 @@ Refresh an expired access token.
 | `inventory:write` | | | ✓ | ✓ | ✓ |
 | `report:view` | | ✓ | | ✓ | ✓ |
 | `user:manage` | | | | ✓ | ✓ |
+| `tenant:settings` | | | | | ✓ |
+| `audit:read` | | | | | ✓ |
+| `system:health` | | | | | ✓ |
 
 ---
 
-## 3. Common Patterns
+## 4. Common Patterns
 
 ### Pagination
 All list endpoints support pagination.
@@ -127,24 +206,9 @@ All errors follow this format:
 ```json
 {
   "error": "HTTP Status Text",
-  "code": "MACHINE_READABLE_CODE",
-  "message": "Human-readable description",
-  "details": { "field": "additional context" }
+  "message": "Human-readable description"
 }
 ```
-
-**Error Codes:**
-| Code | Description |
-|------|-------------|
-| `VALIDATION_ERROR` | Invalid input data |
-| `NOT_FOUND` | Resource doesn't exist |
-| `UNAUTHORIZED` | Authentication required |
-| `FORBIDDEN` | Insufficient permissions |
-| `CONFLICT` | Resource state conflict |
-| `RATE_LIMITED` | Too many requests |
-| `FILE_TOO_LARGE` | Upload exceeds 10MB limit |
-| `DATABASE_ERROR` | Database operation failed |
-| `INTERNAL_ERROR` | Unexpected server error |
 
 **HTTP Status Codes:**
 | Status | Error | Common Causes |
@@ -154,35 +218,34 @@ All errors follow this format:
 | 403 | Forbidden | Insufficient permissions |
 | 404 | Not Found | Resource doesn't exist |
 | 413 | Payload Too Large | File exceeds 10MB |
-| 429 | Too Many Requests | Rate limit exceeded (100 req/min) |
 | 500 | Internal Server Error | Server-side error |
-
-### Rate Limiting
-- **Limit:** 100 requests per minute per IP
-- **Headers:** `Retry-After: 60` on 429 responses
 
 ---
 
-## 4. Assets API
+## 5. Assets API (v1.1 Schema)
 
 ### Asset Object Schema
 ```typescript
 interface Asset {
-  id: string;           // UUID
-  tenantId: string;     // UUID
-  parentId?: string;    // UUID (for asset hierarchy)
-  locationId?: string;  // UUID
+  id: string;              // UUID
+  tenantId: string;        // UUID
+  parentId?: string;       // UUID (for asset hierarchy)
+  locationId?: string;     // UUID
+  orgUnitId?: string;      // UUID - Organizational unit
   name: string;
   status: AssetStatus;
-  criticality: AssetCriticality;
-  lastInspection?: string;  // ISO 8601 datetime
-  createdAt: string;    // ISO 8601 datetime
-  updatedAt: string;    // ISO 8601 datetime
-  location?: string;    // Computed: location name
+  isFieldRelated: boolean; // Requires field verification
+  isFieldVerified: boolean;// Has been verified in field
+  manufacturer?: string;
+  modelNumber?: string;
+  specs?: object;          // JSONB technical specifications
+  createdAt: string;       // ISO 8601 datetime
+  updatedAt: string;       // ISO 8601 datetime
+  location?: string;       // Computed: location name
+  orgUnit?: string;        // Computed: org unit name
 }
 
-type AssetStatus = 'operational' | 'maintenance' | 'decommissioned' | 'pending';
-type AssetCriticality = 'high' | 'medium' | 'low';
+type AssetStatus = 'Draft' | 'Active' | 'Down' | 'Archived' | 'Red_Tag';
 ```
 
 ### `GET /assets`
@@ -192,7 +255,7 @@ List all assets with filtering and pagination.
 | Param | Type | Description |
 |-------|------|-------------|
 | `status` | string[] | Filter by status (repeatable) |
-| `criticality` | string[] | Filter by criticality (repeatable) |
+| `orgUnitId` | string | Filter by org unit |
 | `search` | string | Search in name |
 | `page` | int | Page number |
 | `limit` | int | Items per page |
@@ -201,7 +264,7 @@ List all assets with filtering and pagination.
 
 **Example Request:**
 ```
-GET /api/v1/assets?status=operational&status=maintenance&criticality=high&page=1&limit=20
+GET /api/v1/assets?status=Active&status=Down&orgUnitId=uuid&page=1&limit=20
 Authorization: Bearer <token>
 ```
 
@@ -214,13 +277,18 @@ Authorization: Bearer <token>
       "tenantId": "00000000-0000-0000-0000-000000000001",
       "parentId": null,
       "locationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "orgUnitId": "uuid...",
       "name": "Generator X-500",
-      "status": "operational",
-      "criticality": "high",
-      "lastInspection": "2026-01-15T10:30:00Z",
+      "status": "Active",
+      "isFieldRelated": true,
+      "isFieldVerified": true,
+      "manufacturer": "Caterpillar",
+      "modelNumber": "CAT-500X",
+      "specs": {"powerKw": 500, "fuelType": "diesel"},
       "createdAt": "2025-06-01T08:00:00Z",
       "updatedAt": "2026-01-15T10:30:00Z",
-      "location": "Building A"
+      "location": "Building A",
+      "orgUnit": "Operations"
     }
   ],
   "meta": {
@@ -237,14 +305,6 @@ Get single asset by ID.
 
 **Response (200 OK):** Single Asset object
 
-**Response (404 Not Found):**
-```json
-{
-  "error": "Not Found",
-  "message": "Asset not found"
-}
-```
-
 ### `POST /assets`
 Create a new asset.
 
@@ -253,9 +313,13 @@ Create a new asset.
 {
   "name": "New Generator",
   "parentId": null,
-  "locationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "status": "pending",
-  "criticality": "medium"
+  "locationId": "uuid",
+  "orgUnitId": "uuid",
+  "status": "Draft",
+  "isFieldRelated": true,
+  "manufacturer": "Caterpillar",
+  "modelNumber": "CAT-300",
+  "specs": {"powerKw": 300}
 }
 ```
 
@@ -264,15 +328,19 @@ Create a new asset.
 | `name` | string | ✓ | - |
 | `parentId` | string | | null |
 | `locationId` | string | | null |
-| `status` | string | | `pending` |
-| `criticality` | string | | `medium` |
+| `orgUnitId` | string | | null |
+| `status` | string | | `Draft` |
+| `isFieldRelated` | boolean | | true |
+| `manufacturer` | string | | null |
+| `modelNumber` | string | | null |
+| `specs` | object | | {} |
 
 **Response (201 Created):** Created Asset object
 
 ### `PUT /assets/{id}`
 Update an existing asset.
 
-**Request Body:** Same as POST
+**Request Body:** Same as POST (all fields optional for partial update)
 
 **Response (200 OK):** Updated Asset object
 
@@ -283,7 +351,7 @@ Delete an asset.
 
 ---
 
-## 5. Locations API
+## 6. Locations API
 
 ### Location Object Schema
 ```typescript
@@ -292,49 +360,16 @@ interface Location {
   tenantId: string;     // UUID
   parentId?: string;    // UUID (for hierarchy)
   name: string;
-  type: LocationType;
+  type: string;         // VARCHAR (no enum)
   createdAt: string;
-  updatedAt: string;
 }
-
-type LocationType = 'Site' | 'Building' | 'Room' | 'Zone';
 ```
 
 ### `GET /locations`
 List all locations for the tenant.
 
-**Response (200 OK):**
-```json
-{
-  "data": [
-    {
-      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "tenantId": "00000000-0000-0000-0000-000000000001",
-      "parentId": null,
-      "name": "Main Campus",
-      "type": "Site",
-      "createdAt": "2025-01-01T00:00:00Z",
-      "updatedAt": "2025-01-01T00:00:00Z"
-    }
-  ]
-}
-```
-
 ### `GET /locations/{id}`
 Get single location.
-
-### `GET /locations/{id}/children`
-Get child locations of a parent.
-
-**Response (200 OK):**
-```json
-{
-  "data": [
-    { "id": "...", "name": "Building A", "type": "Building", ... },
-    { "id": "...", "name": "Building B", "type": "Building", ... }
-  ]
-}
-```
 
 ### `POST /locations`
 Create a new location.
@@ -343,16 +378,10 @@ Create a new location.
 ```json
 {
   "name": "Building A",
-  "parentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "parentId": "parent-uuid",
   "type": "Building"
 }
 ```
-
-| Field | Type | Required |
-|-------|------|----------|
-| `name` | string | ✓ |
-| `type` | string | ✓ |
-| `parentId` | string | |
 
 ### `PUT /locations/{id}`
 Update a location.
@@ -362,26 +391,28 @@ Delete a location.
 
 ---
 
-## 6. Work Orders API
+## 7. Work Orders API (v1.1 Schema)
 
 ### Work Order Object Schema
 ```typescript
 interface WorkOrder {
-  id: string;           // UUID
-  tenantId: string;     // UUID
-  assetId?: string;     // UUID
+  id: string;              // UUID
+  tenantId: string;        // UUID
+  readableId: number;      // Human-readable sequential ID
+  assetId?: string;        // UUID
+  assignedUserId?: string; // UUID (renamed from assigneeId)
   status: WOStatus;
   origin: WOOrigin;
-  priority: WOPriority;
+  priority: string;        // VARCHAR: Low, Medium, High, Critical
+  title: string;           // Required title field
   description?: string;
+  startedAt?: string;
+  completedAt?: string;    // When work was completed
   createdAt: string;
-  updatedAt: string;
-  assetName?: string;   // Computed: asset name
 }
 
-type WOStatus = 'Draft' | 'Ready' | 'In_Progress' | 'Closed';
-type WOOrigin = 'PM' | 'CM' | 'Defect';
-type WOPriority = 'Low' | 'Medium' | 'High' | 'Critical';
+type WOStatus = 'Requested' | 'Approved' | 'In_Progress' | 'Work_Complete' | 'Closed' | 'Cancelled';
+type WOOrigin = 'Preventive_Auto' | 'Manual_Request' | 'Defect_Followup';
 ```
 
 ### `GET /work-orders`
@@ -396,152 +427,55 @@ List work orders with filtering.
 | `page` | int | Page number |
 | `limit` | int | Items per page |
 
-**Example:**
-```
-GET /api/v1/work-orders?status=Draft&status=Ready&priority=High
-```
-
-**Response (200 OK):**
-```json
-{
-  "data": [
-    {
-      "id": "wo-uuid",
-      "tenantId": "tenant-uuid",
-      "assetId": "asset-uuid",
-      "status": "Draft",
-      "origin": "CM",
-      "priority": "High",
-      "description": "Noise from engine compartment",
-      "createdAt": "2026-01-31T10:00:00Z",
-      "updatedAt": "2026-01-31T10:00:00Z",
-      "assetName": "Generator X-500"
-    }
-  ],
-  "meta": { "total": 1, "page": 1, "limit": 10, "totalPages": 1 }
-}
-```
-
-### `GET /work-orders/{id}`
-Get single work order.
-
 ### `POST /work-orders`
 Create a new work order.
 
 **Request Body:**
 ```json
 {
-  "assetId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "origin": "CM",
+  "assetId": "asset-uuid",
+  "origin": "Manual_Request",
   "priority": "High",
+  "title": "Generator Maintenance",
   "description": "Engine making unusual noise"
 }
 ```
 
-| Field | Type | Required | Default |
-|-------|------|----------|---------|
-| `origin` | string | ✓ | - |
-| `assetId` | string | | null |
-| `priority` | string | | `Medium` |
-| `description` | string | | null |
-
-**Response (201 Created):** Created work order with `status: "Draft"`
-
-### `PUT /work-orders/{id}`
-Update a work order.
-
-**Request Body:**
-```json
-{
-  "priority": "Critical",
-  "description": "Updated description"
-}
-```
-
-### `PATCH /work-orders/{id}/status`
-Update work order status (state transition).
-
-**Request Body:**
-```json
-{
-  "status": "In_Progress"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "status": "In_Progress"
-}
-```
-
 ---
 
-## 7. Enums Reference
+## 8. Enums Reference (v1.1 - Capitalized)
 
 ### Asset Status
-| Value | Display | Color |
-|-------|---------|-------|
-| `operational` | Operational | Green |
-| `maintenance` | Under Maintenance | Yellow |
-| `decommissioned` | Decommissioned | Red |
-| `pending` | Pending | Blue |
-
-### Asset Criticality
-| Value | Display | Color |
-|-------|---------|-------|
-| `high` | High | Red |
-| `medium` | Medium | Orange |
-| `low` | Low | Gray |
+| Value | Description |
+|-------|-------------|
+| `Draft` | New, not yet active |
+| `Active` | Operational |
+| `Down` | Under maintenance |
+| `Archived` | Decommissioned |
+| `Red_Tag` | Safety concern |
 
 ### Work Order Status
-| Value | Display | Next States |
-|-------|---------|-------------|
-| `Draft` | Draft | Ready |
-| `Ready` | Ready | In_Progress |
-| `In_Progress` | In Progress | Closed |
-| `Closed` | Closed | - |
+| Value | Next States |
+|-------|-------------|
+| `Requested` | Approved, Cancelled |
+| `Approved` | In_Progress, Cancelled |
+| `In_Progress` | Work_Complete |
+| `Work_Complete` | Closed |
+| `Closed` | - |
+| `Cancelled` | - |
 
 ### Work Order Origin
-| Value | Display | Description |
-|-------|---------|-------------|
-| `PM` | Preventive | Scheduled maintenance |
-| `CM` | Corrective | Reactive/breakdown |
-| `Defect` | Defect | From defect report |
-
-### Work Order Priority
-| Value | Display | SLA |
-|-------|---------|-----|
-| `Low` | Low | 72h |
-| `Medium` | Medium | 48h |
-| `High` | High | 24h |
-| `Critical` | Critical | 4h |
-
-### Location Type
-| Value | Hierarchy Level |
-|-------|-----------------|
-| `Site` | 1 (Top) |
-| `Building` | 2 |
-| `Room` | 3 |
-| `Zone` | 4 |
+| Value | Description |
+|-------|-------------|
+| `Preventive_Auto` | Scheduled PM |
+| `Manual_Request` | Corrective maintenance |
+| `Defect_Followup` | From defect report |
 
 ---
 
-## 8. Files API (MinIO Storage)
+## 9. Files API (MinIO Storage)
 
 File uploads are stored in MinIO object storage, organized by tenant and asset.
-
-### Upload Result Schema
-```typescript
-interface UploadResult {
-  success: boolean;
-  objectName: string;      // Full path in storage
-  size: number;            // Bytes
-  contentType: string;
-  originalName: string;
-  downloadUrl: string;     // Relative URL for download
-}
-```
 
 ### `POST /upload`
 Upload a file (multipart form-data).
@@ -553,15 +487,7 @@ Upload a file (multipart form-data).
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `file` | File | ✓ | The file to upload |
-| `assetId` | string | | Associate with asset (default: "general") |
-
-**Example:**
-```bash
-curl -X POST /api/v1/upload \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "file=@photo.jpg" \
-  -F "assetId=asset-uuid"
-```
+| `assetId` | string | | Associate with asset |
 
 **Response (201 Created):**
 ```json
@@ -571,42 +497,32 @@ curl -X POST /api/v1/upload \
   "size": 102400,
   "contentType": "image/jpeg",
   "originalName": "photo.jpg",
-  "downloadUrl": "/api/v1/files/attachments/tenants/tenant-id/assets/asset-id/1234567890.jpg"
-}
-```
-
-**Error (413 Payload Too Large):**
-```json
-{
-  "error": "Request Entity Too Large",
-  "code": "FILE_TOO_LARGE",
-  "message": "File exceeds maximum size of 10 MB",
-  "details": { "maxSizeBytes": 10485760 }
+  "downloadUrl": "/api/v1/files/attachments/..."
 }
 ```
 
 ### `GET /files/{bucket}/{objectPath}`
 Download a file (redirects to presigned URL).
 
-**Response:** 307 Temporary Redirect to MinIO presigned URL (valid 1 hour)
-
 ### `DELETE /files/{bucket}/{objectPath}`
-Delete a file. Only files owned by your tenant can be deleted.
-
-**Response (204 No Content):** Success
-
-**Error (403 Forbidden):**
-```json
-{
-  "error": "Forbidden",
-  "code": "FORBIDDEN",
-  "message": "You can only delete files owned by your tenant"
-}
-```
+Delete a file.
 
 ---
 
-## 9. Health & System
+## 10. Admin APIs
+
+### `GET /audit-logs`
+Paginated, filterable list of audit entries (Admin only).
+
+### `GET /tenant/settings`
+Returns current tenant settings.
+
+### `PATCH /tenant/settings`
+Partial update of settings.
+
+---
+
+## 11. Health & System
 
 ### `GET /health`
 Health check endpoint (public, no auth required).
@@ -615,77 +531,216 @@ Health check endpoint (public, no auth required).
 ```json
 {
   "status": "up",
-  "message": "It's healthy"
+  "message": "It's healthy",
+  "timestamp": "2026-02-01T10:00:00Z"
 }
 ```
 
-### `GET /`
-Root endpoint (public).
+### `GET /system/health`
+Extended health check with component status (Admin only).
 
 **Response (200 OK):**
 ```json
 {
-  "message": "IOI AMMS API"
+  "status": "up",
+  "components": {
+    "database": { "status": "up", "latencyMs": 3 },
+    "storage": { "status": "up", "bucketExists": true }
+  },
+  "stats": {
+    "totalUsers": 12,
+    "totalAssets": 347,
+    "totalWorkOrders": 89,
+    "openWorkOrders": 23
+  }
 }
 ```
 
 ---
 
-## 9. Frontend Integration Notes
+## 15. Analytics API
 
-### TypeScript Types
-```typescript
-// Use these in your frontend for type safety
-type UUID = string;
-type ISODateTime = string;
+### `GET /analytics/dashboard`
+Aggregated stats for the executive dashboard.
 
-interface PaginatedResponse<T> {
-  data: T[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
-
-interface ApiError {
-  error: string;
-  code?: string;           // Machine-readable error code
-  message: string;
-  details?: Record<string, unknown>;
+**Response (200 OK):**
+```json
+{
+  "stats": {
+    "totalAssets": 1245,
+    "maintenanceDue": 12,
+    "openFaults": 3,
+    "criticalAlerts": 3,
+    "openWorkOrders": 5,
+    "completionRate": 94
+  },
+  "alerts": [
+    {
+      "id": "uuid",
+      "title": "Asset Reported Critical Status",
+      "severity": "Critical",
+      "assetId": "asset-uuid",
+      "assetName": "Hydraulic Press",
+      "timestamp": "2023-11-20T10:00:00Z"
+    }
+  ]
 }
 ```
 
-### Fetch Example
-```typescript
-const fetchAssets = async (token: string, filters?: AssetFilters) => {
-  const params = new URLSearchParams();
-  if (filters?.status) filters.status.forEach(s => params.append('status', s));
-  if (filters?.page) params.set('page', String(filters.page));
-  
-  const res = await fetch(`/api/v1/assets?${params}`, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  
-  if (!res.ok) {
-    const err: ApiError = await res.json();
-    throw new Error(err.message);
+---
+
+## 16. User Management (Enhanced)
+
+### `PUT /users/{id}`
+Update user details (Role, Status, Name).
+
+**Request Body:**
+```json
+{
+  "fullName": "John Doe",
+  "role": "Manager",
+  "isActive": true,
+  "orgUnitId": null
+}
+```
+
+---
+
+## 17. Tenant Settings (Enhanced)
+
+### `PATCH /tenant/settings`
+Update system configuration (Partial update).
+
+**Request Body:**
+```json
+{
+  "settings": {
+    "maintenanceCycleDays": 90,
+    "assetCategories": ["Hardware", "software"],
+    "erpConfig": {
+      "enabled": true,
+      "provider": "SAP"
+    }
   }
-  
-  return res.json() as Promise<PaginatedResponse<Asset>>;
-};
+}
 ```
 
-### Nuxt Composable Pattern
+---
+
+## 12. Parts Catalog API
+
+### Part Object Schema
 ```typescript
-// composables/useApi.ts
-export const useAssets = () => {
-  const { token } = useAuth();
-  
-  return useFetch<PaginatedResponse<Asset>>('/api/v1/assets', {
-    headers: { Authorization: `Bearer ${token.value}` },
-    key: 'assets'
-  });
-};
+interface Part {
+  id: string;
+  tenantId: string;
+  sku: string;
+  name: string;
+  category?: string;
+  uom: string;          // Unit of measure (Each, Box, Liter, etc.)
+  minStockLevel: number;
+  isStockItem: boolean;
+  createdAt: string;
+}
 ```
+
+### `GET /parts`
+List all parts with filtering.
+
+**Query Parameters:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `category` | string | Filter by category |
+| `search` | string | Search in name/SKU |
+| `page` | int | Page number |
+| `limit` | int | Items per page |
+
+### `POST /parts`
+Create a new part.
+
+**Request Body:**
+```json
+{
+  "sku": "FLT-001",
+  "name": "Oil Filter",
+  "category": "Filters",
+  "uom": "Each",
+  "minStockLevel": 10,
+  "isStockItem": true
+}
+```
+
+### `PUT /parts/{id}`
+Update a part.
+
+### `DELETE /parts/{id}`
+Delete a part.
+
+---
+
+## 13. Inventory Stock API
+
+### InventoryStock Object Schema
+```typescript
+interface InventoryStock {
+  id: string;
+  tenantId: string;
+  partId: string;
+  locationId: string;
+  quantityOnHand: number;
+  binLabel?: string;
+  updatedAt: string;
+  partName: string;   // Joined
+  partSku: string;    // Joined
+  locationName: string; // Joined
+}
+```
+
+### `GET /inventory/stock`
+List inventory stock with filtering.
+
+**Query Parameters:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `partId` | string | Filter by part |
+| `locationId` | string | Filter by location |
+| `lowStock` | boolean | Show only items below min level |
+| `page` | int | Page number |
+| `limit` | int | Items per page |
+
+### `POST /inventory/stock`
+Create or update stock at a location.
+
+**Request Body:**
+```json
+{
+  "partId": "part-uuid",
+  "locationId": "location-uuid",
+  "quantityOnHand": 50,
+  "binLabel": "A-01-03"
+}
+```
+
+### `POST /inventory/stock/adjust`
+Adjust stock quantity (positive or negative).
+
+**Request Body:**
+```json
+{
+  "partId": "part-uuid",
+  "locationId": "location-uuid",
+  "delta": -5
+}
+```
+
+---
+
+## 14. Inventory Wallets API
+
+Technician-held inventory (assigned stock).
+
+### `GET /inventory/wallets`
+Get current user's wallet.
+
+### `GET /inventory/wallets/{userId}`
+Get a specific user's wallet.

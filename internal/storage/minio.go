@@ -21,6 +21,7 @@ type Service interface {
 	Delete(ctx context.Context, bucket, objectName string) error
 	GetPresignedURL(ctx context.Context, bucket, objectName string, expiry time.Duration) (string, error)
 	EnsureBucket(ctx context.Context, bucket string) error
+	Health() map[string]string // [NEW] Check connectivity
 }
 
 // UploadResult contains info about an uploaded file
@@ -30,6 +31,27 @@ type UploadResult struct {
 	Size       int64  `json:"size"`
 	ETag       string `json:"etag"`
 	URL        string `json:"url"`
+}
+
+// Health checks MinIO connectivity
+func (s *minioService) Health() map[string]string {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	status := "up"
+	message := "Connected"
+
+	// List buckets as a ping check
+	_, err := s.client.ListBuckets(ctx)
+	if err != nil {
+		status = "down"
+		message = err.Error()
+	}
+
+	return map[string]string{
+		"status":  status,
+		"message": message,
+	}
 }
 
 type minioService struct {

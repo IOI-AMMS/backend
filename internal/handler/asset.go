@@ -9,18 +9,20 @@ import (
 	"ioi-amms/internal/middleware"
 	"ioi-amms/internal/model"
 	"ioi-amms/internal/repository"
+	"ioi-amms/internal/service"
 
 	"github.com/go-chi/chi/v5"
 )
 
 // AssetHandler handles asset-related HTTP requests
 type AssetHandler struct {
-	repo *repository.AssetRepository
+	repo  *repository.AssetRepository
+	audit *service.AuditService
 }
 
 // NewAssetHandler creates a new asset handler
-func NewAssetHandler(repo *repository.AssetRepository) *AssetHandler {
-	return &AssetHandler{repo: repo}
+func NewAssetHandler(repo *repository.AssetRepository, audit *service.AuditService) *AssetHandler {
+	return &AssetHandler{repo: repo, audit: audit}
 }
 
 // RegisterRoutes registers asset routes
@@ -40,16 +42,16 @@ func (h *AssetHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse query params
+	// Parse query params (v1.1 schema)
 	params := model.AssetListParams{
-		TenantID:    claims.TenantID,
-		Status:      r.URL.Query()["status"],
-		Criticality: r.URL.Query()["criticality"],
-		Search:      r.URL.Query().Get("search"),
-		SortBy:      r.URL.Query().Get("sortBy"),
-		SortDir:     r.URL.Query().Get("sortDir"),
-		Page:        parseIntParam(r, "page", 1),
-		Limit:       parseIntParam(r, "limit", 10),
+		TenantID:  claims.TenantID,
+		Status:    r.URL.Query()["status"],
+		OrgUnitID: r.URL.Query().Get("orgUnitId"),
+		Search:    r.URL.Query().Get("search"),
+		SortBy:    r.URL.Query().Get("sortBy"),
+		SortDir:   r.URL.Query().Get("sortDir"),
+		Page:      parseIntParam(r, "page", 1),
+		Limit:     parseIntParam(r, "limit", 10),
 	}
 
 	result, err := h.repo.List(r.Context(), params)
@@ -91,13 +93,17 @@ func (h *AssetHandler) Get(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, asset)
 }
 
-// CreateAssetRequest represents the create asset request body
+// CreateAssetRequest represents the create asset request body (v1.1)
 type CreateAssetRequest struct {
-	ParentID    *string `json:"parentId"`
-	LocationID  *string `json:"locationId"`
-	Name        string  `json:"name"`
-	Status      string  `json:"status"`
-	Criticality string  `json:"criticality"`
+	ParentID       *string         `json:"parentId"`
+	LocationID     *string         `json:"locationId"`
+	OrgUnitID      *string         `json:"orgUnitId"`
+	Name           string          `json:"name"`
+	Status         string          `json:"status"`
+	IsFieldRelated *bool           `json:"isFieldRelated"`
+	Manufacturer   *string         `json:"manufacturer"`
+	ModelNumber    *string         `json:"modelNumber"`
+	Specs          json.RawMessage `json:"specs"`
 }
 
 // Create handles POST /assets
@@ -121,19 +127,24 @@ func (h *AssetHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Set defaults
 	if req.Status == "" {
-		req.Status = model.AssetStatusPending
+		req.Status = model.AssetStatusDraft
 	}
-	if req.Criticality == "" {
-		req.Criticality = model.AssetCriticalityMedium
+	isFieldRelated := true
+	if req.IsFieldRelated != nil {
+		isFieldRelated = *req.IsFieldRelated
 	}
 
 	asset := &model.Asset{
-		TenantID:    claims.TenantID,
-		ParentID:    req.ParentID,
-		LocationID:  req.LocationID,
-		Name:        req.Name,
-		Status:      req.Status,
-		Criticality: req.Criticality,
+		TenantID:       claims.TenantID,
+		ParentID:       req.ParentID,
+		LocationID:     req.LocationID,
+		OrgUnitID:      req.OrgUnitID,
+		Name:           req.Name,
+		Status:         req.Status,
+		IsFieldRelated: isFieldRelated,
+		Manufacturer:   req.Manufacturer,
+		ModelNumber:    req.ModelNumber,
+		Specs:          req.Specs,
 	}
 
 	if err := h.repo.Create(r.Context(), asset); err != nil {
@@ -141,6 +152,11 @@ func (h *AssetHandler) Create(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusInternalServerError, "Failed to create asset")
 		return
 	}
+
+	// Audit Log
+	h.audit.Log(r.Context(), claims.UserID, model.AuditActionCreate, model.AuditEntityAsset, asset.ID, map[string]interface{}{
+		"name": asset.Name,
+	})
 
 	jsonResponse(w, http.StatusCreated, asset)
 }
@@ -167,12 +183,34 @@ func (h *AssetHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update fields
-	existing.Name = req.Name
-	existing.ParentID = req.ParentID
-	existing.LocationID = req.LocationID
-	existing.Status = req.Status
-	existing.Criticality = req.Criticality
+	// Update fields only if provided (Partial Update)
+	if req.Name != "" {
+		existing.Name = req.Name
+	}
+	if req.ParentID != nil {
+		existing.ParentID = req.ParentID
+	}
+	if req.LocationID != nil {
+		existing.LocationID = req.LocationID
+	}
+	if req.OrgUnitID != nil {
+		existing.OrgUnitID = req.OrgUnitID
+	}
+	if req.Status != "" {
+		existing.Status = req.Status
+	}
+	if req.IsFieldRelated != nil {
+		existing.IsFieldRelated = *req.IsFieldRelated
+	}
+	if req.Manufacturer != nil {
+		existing.Manufacturer = req.Manufacturer
+	}
+	if req.ModelNumber != nil {
+		existing.ModelNumber = req.ModelNumber
+	}
+	if req.Specs != nil {
+		existing.Specs = req.Specs
+	}
 
 	if err := h.repo.Update(r.Context(), existing); err != nil {
 		slog.Error("Failed to update asset", slog.String("error", err.Error()))
@@ -200,15 +238,15 @@ func (h *AssetHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Helper functions
-func parseIntParam(r *http.Request, key string, defaultVal int) int {
-	val := r.URL.Query().Get(key)
+// parseIntParam helper
+func parseIntParam(r *http.Request, name string, defaultVal int) int {
+	val := r.URL.Query().Get(name)
 	if val == "" {
 		return defaultVal
 	}
-	parsed, err := strconv.Atoi(val)
+	i, err := strconv.Atoi(val)
 	if err != nil {
 		return defaultVal
 	}
-	return parsed
+	return i
 }

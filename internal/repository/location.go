@@ -24,17 +24,17 @@ func NewLocationRepository(db *pgxpool.Pool) *LocationRepository {
 	return &LocationRepository{db: db}
 }
 
-// FindByID retrieves a location by ID
+// FindByID retrieves a location by ID (v1.1 schema - no updated_at)
 func (r *LocationRepository) FindByID(ctx context.Context, id string) (*model.Location, error) {
 	query := `
-		SELECT id, tenant_id, parent_id, name, type, created_at, updated_at
+		SELECT id, tenant_id, parent_id, name, type, created_at
 		FROM locations
 		WHERE id = $1
 	`
 
 	var loc model.Location
 	err := r.db.QueryRow(ctx, query, id).Scan(
-		&loc.ID, &loc.TenantID, &loc.ParentID, &loc.Name, &loc.Type, &loc.CreatedAt, &loc.UpdatedAt,
+		&loc.ID, &loc.TenantID, &loc.ParentID, &loc.Name, &loc.Type, &loc.CreatedAt,
 	)
 
 	if err != nil {
@@ -47,10 +47,10 @@ func (r *LocationRepository) FindByID(ctx context.Context, id string) (*model.Lo
 	return &loc, nil
 }
 
-// ListByTenant retrieves all locations for a tenant
+// ListByTenant retrieves all locations for a tenant (v1.1 schema)
 func (r *LocationRepository) ListByTenant(ctx context.Context, tenantID string) ([]model.Location, error) {
 	query := `
-		SELECT id, tenant_id, parent_id, name, type, created_at, updated_at
+		SELECT id, tenant_id, parent_id, name, type, created_at
 		FROM locations
 		WHERE tenant_id = $1
 		ORDER BY type, name
@@ -66,7 +66,7 @@ func (r *LocationRepository) ListByTenant(ctx context.Context, tenantID string) 
 	for rows.Next() {
 		var loc model.Location
 		err := rows.Scan(
-			&loc.ID, &loc.TenantID, &loc.ParentID, &loc.Name, &loc.Type, &loc.CreatedAt, &loc.UpdatedAt,
+			&loc.ID, &loc.TenantID, &loc.ParentID, &loc.Name, &loc.Type, &loc.CreatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -77,10 +77,10 @@ func (r *LocationRepository) ListByTenant(ctx context.Context, tenantID string) 
 	return locations, nil
 }
 
-// ListChildren retrieves child locations of a parent
+// ListChildren retrieves child locations of a parent (v1.1 schema)
 func (r *LocationRepository) ListChildren(ctx context.Context, parentID string) ([]model.Location, error) {
 	query := `
-		SELECT id, tenant_id, parent_id, name, type, created_at, updated_at
+		SELECT id, tenant_id, parent_id, name, type, created_at
 		FROM locations
 		WHERE parent_id = $1
 		ORDER BY name
@@ -96,7 +96,7 @@ func (r *LocationRepository) ListChildren(ctx context.Context, parentID string) 
 	for rows.Next() {
 		var loc model.Location
 		err := rows.Scan(
-			&loc.ID, &loc.TenantID, &loc.ParentID, &loc.Name, &loc.Type, &loc.CreatedAt, &loc.UpdatedAt,
+			&loc.ID, &loc.TenantID, &loc.ParentID, &loc.Name, &loc.Type, &loc.CreatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -107,31 +107,29 @@ func (r *LocationRepository) ListChildren(ctx context.Context, parentID string) 
 	return locations, nil
 }
 
-// Create inserts a new location
+// Create inserts a new location (v1.1 schema)
 func (r *LocationRepository) Create(ctx context.Context, loc *model.Location) error {
 	query := `
 		INSERT INTO locations (tenant_id, parent_id, name, type)
 		VALUES ($1, $2, $3, $4)
-		RETURNING id, created_at, updated_at
+		RETURNING id, created_at
 	`
 
 	return r.db.QueryRow(ctx, query,
 		loc.TenantID, loc.ParentID, loc.Name, loc.Type,
-	).Scan(&loc.ID, &loc.CreatedAt, &loc.UpdatedAt)
+	).Scan(&loc.ID, &loc.CreatedAt)
 }
 
-// Update modifies an existing location
+// Update modifies an existing location (v1.1 schema - no updated_at column)
 func (r *LocationRepository) Update(ctx context.Context, loc *model.Location) error {
 	query := `
 		UPDATE locations
-		SET parent_id = $2, name = $3, type = $4, updated_at = NOW()
+		SET parent_id = $2, name = $3, type = $4
 		WHERE id = $1
-		RETURNING updated_at
 	`
 
-	return r.db.QueryRow(ctx, query,
-		loc.ID, loc.ParentID, loc.Name, loc.Type,
-	).Scan(&loc.UpdatedAt)
+	_, err := r.db.Exec(ctx, query, loc.ID, loc.ParentID, loc.Name, loc.Type)
+	return err
 }
 
 // Delete removes a location

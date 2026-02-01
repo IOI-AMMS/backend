@@ -24,18 +24,77 @@ func (h *UserHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/users", func(r chi.Router) {
 		r.Get("/", h.ListUsers)
 		r.Post("/", h.CreateUser)
+		r.Get("/", h.ListUsers)
+		r.Post("/", h.CreateUser)
+		r.Put("/{id}", h.UpdateUser) // New endpoint for Settings screen
 		r.Put("/{id}/password", h.ResetPassword)
 	})
 }
 
-// CreateUser handles creating a new user
+// UpdateUser handles updating user details (Role, Status, FullName)
+func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "id")
+	if userID == "" {
+		badRequest(w, "User ID is required", nil)
+		return
+	}
+
+	var req struct {
+		FullName  string  `json:"fullName"`
+		Role      string  `json:"role"`
+		IsActive  bool    `json:"isActive"`
+		OrgUnitID *string `json:"orgUnitId"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		badRequest(w, "Invalid request body", nil)
+		return
+	}
+
+	// Fetch existing user to ensure tenant isolation
+	claims, _ := r.Context().Value(middleware.UserContextKey).(*auth.Claims)
+	existingUser, err := h.repo.FindByID(r.Context(), userID)
+	if err != nil {
+		if err == repository.ErrUserNotFound {
+			notFoundError(w, "User not found")
+			return
+		}
+		internalError(w, err.Error())
+		return
+	}
+
+	// Ensure tenant match
+	if existingUser.TenantID != claims.TenantID {
+		notFoundError(w, "User not found") // Hide cross-tenant existence
+		return
+	}
+
+	// Update fields
+	if req.FullName != "" {
+		existingUser.FullName = req.FullName
+	}
+	if req.Role != "" {
+		existingUser.Role = req.Role
+	}
+	existingUser.IsActive = req.IsActive
+	existingUser.OrgUnitID = req.OrgUnitID // Can be nil
+
+	if err := h.repo.Update(r.Context(), existingUser); err != nil {
+		internalError(w, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, existingUser.ToResponse())
+}
+
+// CreateUser handles creating a new user (v1.1 schema)
 func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Email     string `json:"email"`
-		Password  string `json:"password"`
-		FirstName string `json:"firstName"`
-		LastName  string `json:"lastName"`
-		Role      string `json:"role"`
+		Email     string  `json:"email"`
+		Password  string  `json:"password"`
+		FullName  string  `json:"fullName"`
+		Role      string  `json:"role"`
+		OrgUnitID *string `json:"orgUnitId"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -65,11 +124,12 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	user := &model.User{
 		TenantID:     tenantID,
+		OrgUnitID:    req.OrgUnitID,
 		Email:        req.Email,
 		PasswordHash: hashedPassword,
-		FirstName:    req.FirstName,
-		LastName:     req.LastName,
+		FullName:     req.FullName,
 		Role:         req.Role,
+		IsActive:     true,
 	}
 
 	if err := h.repo.Create(r.Context(), user); err != nil {
@@ -82,10 +142,10 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(user.ToResponse())
 }
 
-// ListUsers retrieves all users for the current tenant
+// ListUsers retrieves all users for the current tenant (v1.1 schema)
 func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	// Get tenant from context via user claims
 	claims, ok := r.Context().Value(middleware.UserContextKey).(*auth.Claims)
@@ -101,29 +161,15 @@ func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sanitize output (don't send password hash)
-	type safeUser struct {
-		ID        string `json:"id"`
-		Email     string `json:"email"`
-		FirstName string `json:"firstName"`
-		LastName  string `json:"lastName"`
-		Role      string `json:"role"`
-	}
-
-	var response []safeUser
+	// Convert to response format
+	var response []model.UserResponse
 	for _, u := range users {
-		response = append(response, safeUser{
-			ID:        u.ID,
-			Email:     u.Email,
-			FirstName: u.FirstName,
-			LastName:  u.LastName,
-			Role:      u.Role,
-		})
+		response = append(response, u.ToResponse())
 	}
 
 	// Return empty list if no users found instead of null
 	if response == nil {
-		response = []safeUser{}
+		response = []model.UserResponse{}
 	}
 
 	jsonResponse(w, http.StatusOK, response)

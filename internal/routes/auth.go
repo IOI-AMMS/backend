@@ -95,7 +95,7 @@ func LoginHandler(userRepo *repository.UserRepository) http.HandlerFunc {
 			User: UserInfo{
 				ID:       user.ID,
 				Email:    user.Email,
-				Name:     user.FirstName + " " + user.LastName,
+				Name:     user.FullName,
 				Role:     user.Role,
 				TenantID: user.TenantID,
 			},
@@ -112,7 +112,7 @@ func handleDevLogin(w http.ResponseWriter) {
 	devUserID := "00000000-0000-0000-0000-000000000002"
 	devTenantID := "00000000-0000-0000-0000-000000000001"
 
-	token, _ := auth.GenerateToken(devUserID, devTenantID, "admin@ioi.com", "manager")
+	token, _ := auth.GenerateToken(devUserID, devTenantID, "admin@ioi.com", "Admin")
 	refreshToken, _ := auth.GenerateRefreshToken(devUserID)
 
 	resp := LoginResponse{
@@ -122,7 +122,7 @@ func handleDevLogin(w http.ResponseWriter) {
 			ID:       devUserID,
 			Email:    "admin@ioi.com",
 			Name:     "Dev Admin",
-			Role:     "manager",
+			Role:     "Admin",
 			TenantID: devTenantID,
 		},
 	}

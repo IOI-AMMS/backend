@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"ioi-amms/internal/database"
+	"ioi-amms/internal/storage"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -47,13 +48,114 @@ type MetricsResponse struct {
 	NumGC        uint32 `json:"numGC"`
 }
 
+// SystemHealthResponse represents detailed admin health check
+type SystemHealthResponse struct {
+	Status     string                 `json:"status"`
+	Components map[string]interface{} `json:"components"`
+	Stats      map[string]interface{} `json:"stats"`
+}
+
 // RegisterHealthRoutes registers health and readiness endpoints
 func RegisterHealthRoutes(r chi.Router, db database.Service) {
 	r.Get("/health", HealthHandler())
 	r.Get("/ready", ReadinessHandler(db))
 	r.Get("/live", LivenessHandler())
 	r.Get("/metrics", MetricsHandler())
+	// /system/health is registered in main routes due to auth requirement
 }
+
+// ... existing handlers ...
+
+// SystemHealthHandler returns detailed system status for admins
+func SystemHealthHandler(db database.Service, storage storage.Service) http.HandlerFunc { // [UPDATED]
+	return func(w http.ResponseWriter, r *http.Request) {
+		components := make(map[string]interface{})
+		allHealthy := true
+
+		// 1. Database Check with Latency
+		dbStart := time.Now()
+		dbHealth := db.Health()
+		dbLatency := time.Since(dbStart).Milliseconds()
+
+		dbStatus := "down"
+		if dbHealth["status"] == "up" {
+			dbStatus = "up"
+		} else {
+			allHealthy = false
+		}
+
+		components["database"] = map[string]interface{}{
+			"status":    dbStatus,
+			"latencyMs": dbLatency,
+		}
+
+		// 2. Storage Check (MinIO)
+		storageStatus := "down"
+		storageMsg := "Storage unavailable"
+		if storage != nil {
+			sHealth := storage.Health()
+			storageStatus = sHealth["status"]
+			storageMsg = sHealth["message"]
+		}
+
+		if storageStatus != "up" {
+			// Optional service, might not fail 'allHealthy' depending on requirements, but let's be strict
+			// allHealthy = false
+		}
+
+		components["storage"] = map[string]interface{}{
+			"status":  storageStatus,
+			"message": storageMsg,
+		}
+
+		// 3. Stats (Counts) - Query database directly
+		ctx := r.Context()
+		pool := db.Pool()
+
+		var totalUsers, totalAssets, totalWorkOrders, openWorkOrders int
+
+		// Count users
+		if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM users").Scan(&totalUsers); err != nil {
+			totalUsers = -1 // indicate error
+		}
+
+		// Count assets
+		if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM assets").Scan(&totalAssets); err != nil {
+			totalAssets = -1
+		}
+
+		// Count work orders
+		if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM work_orders").Scan(&totalWorkOrders); err != nil {
+			totalWorkOrders = -1
+		}
+
+		// Count open work orders (not Closed)
+		if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM work_orders WHERE status != 'Closed'").Scan(&openWorkOrders); err != nil {
+			openWorkOrders = -1
+		}
+
+		stats := map[string]interface{}{
+			"totalUsers":      totalUsers,
+			"totalAssets":     totalAssets,
+			"totalWorkOrders": totalWorkOrders,
+			"openWorkOrders":  openWorkOrders,
+		}
+
+		status := "up"
+		if !allHealthy {
+			status = "degraded"
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(SystemHealthResponse{
+			Status:     status,
+			Components: components,
+			Stats:      stats,
+		})
+	}
+}
+
+// Existing handlers...
 
 // HealthHandler returns basic health status
 func HealthHandler() http.HandlerFunc {

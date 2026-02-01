@@ -26,12 +26,13 @@ func NewWorkOrderRepository(db *pgxpool.Pool) *WorkOrderRepository {
 	return &WorkOrderRepository{db: db}
 }
 
-// FindByID retrieves a work order by ID
+// FindByID retrieves a work order by ID (v1.1 schema)
 func (r *WorkOrderRepository) FindByID(ctx context.Context, id string) (*model.WorkOrder, error) {
 	query := `
 		SELECT 
-			w.id, w.tenant_id, w.asset_id, w.status::text, w.origin::text, w.priority::text,
-			w.description, w.created_at, w.updated_at,
+			w.id, w.tenant_id, w.readable_id, w.asset_id, w.assigned_user_id,
+			w.status, w.origin, w.priority, w.title,
+			w.description, w.started_at, w.completed_at, w.created_at,
 			COALESCE(a.name, '') as asset_name
 		FROM work_orders w
 		LEFT JOIN assets a ON w.asset_id = a.id
@@ -40,8 +41,9 @@ func (r *WorkOrderRepository) FindByID(ctx context.Context, id string) (*model.W
 
 	var wo model.WorkOrder
 	err := r.db.QueryRow(ctx, query, id).Scan(
-		&wo.ID, &wo.TenantID, &wo.AssetID, &wo.Status, &wo.Origin, &wo.Priority,
-		&wo.Description, &wo.CreatedAt, &wo.UpdatedAt,
+		&wo.ID, &wo.TenantID, &wo.ReadableID, &wo.AssetID, &wo.AssignedUserID,
+		&wo.Status, &wo.Origin, &wo.Priority, &wo.Title,
+		&wo.Description, &wo.StartedAt, &wo.CompletedAt, &wo.CreatedAt,
 		&wo.AssetName,
 	)
 
@@ -55,7 +57,7 @@ func (r *WorkOrderRepository) FindByID(ctx context.Context, id string) (*model.W
 	return &wo, nil
 }
 
-// List retrieves work orders with filtering and pagination
+// List retrieves work orders with filtering and pagination (v1.1 schema)
 func (r *WorkOrderRepository) List(ctx context.Context, params model.WorkOrderListParams) (*model.PaginatedResult[model.WorkOrder], error) {
 	var conditions []string
 	var args []interface{}
@@ -72,7 +74,7 @@ func (r *WorkOrderRepository) List(ctx context.Context, params model.WorkOrderLi
 			args = append(args, s)
 			argNum++
 		}
-		conditions = append(conditions, fmt.Sprintf("w.status::text IN (%s)", strings.Join(placeholders, ",")))
+		conditions = append(conditions, fmt.Sprintf("w.status IN (%s)", strings.Join(placeholders, ",")))
 	}
 
 	if len(params.Priority) > 0 {
@@ -82,7 +84,7 @@ func (r *WorkOrderRepository) List(ctx context.Context, params model.WorkOrderLi
 			args = append(args, p)
 			argNum++
 		}
-		conditions = append(conditions, fmt.Sprintf("w.priority::text IN (%s)", strings.Join(placeholders, ",")))
+		conditions = append(conditions, fmt.Sprintf("w.priority IN (%s)", strings.Join(placeholders, ",")))
 	}
 
 	if params.AssetID != "" {
@@ -122,8 +124,9 @@ func (r *WorkOrderRepository) List(ctx context.Context, params model.WorkOrderLi
 
 	query := fmt.Sprintf(`
 		SELECT 
-			w.id, w.tenant_id, w.asset_id, w.status::text, w.origin::text, w.priority::text,
-			w.description, w.created_at, w.updated_at,
+			w.id, w.tenant_id, w.readable_id, w.asset_id, w.assigned_user_id,
+			w.status, w.origin, w.priority, w.title,
+			w.description, w.started_at, w.completed_at, w.created_at,
 			COALESCE(a.name, '') as asset_name
 		FROM work_orders w
 		LEFT JOIN assets a ON w.asset_id = a.id
@@ -144,8 +147,9 @@ func (r *WorkOrderRepository) List(ctx context.Context, params model.WorkOrderLi
 	for rows.Next() {
 		var wo model.WorkOrder
 		err := rows.Scan(
-			&wo.ID, &wo.TenantID, &wo.AssetID, &wo.Status, &wo.Origin, &wo.Priority,
-			&wo.Description, &wo.CreatedAt, &wo.UpdatedAt,
+			&wo.ID, &wo.TenantID, &wo.ReadableID, &wo.AssetID, &wo.AssignedUserID,
+			&wo.Status, &wo.Origin, &wo.Priority, &wo.Title,
+			&wo.Description, &wo.StartedAt, &wo.CompletedAt, &wo.CreatedAt,
 			&wo.AssetName,
 		)
 		if err != nil {
@@ -165,36 +169,34 @@ func (r *WorkOrderRepository) List(ctx context.Context, params model.WorkOrderLi
 	}, nil
 }
 
-// Create inserts a new work order
+// Create inserts a new work order (v1.1 schema)
 func (r *WorkOrderRepository) Create(ctx context.Context, wo *model.WorkOrder) error {
 	query := `
-		INSERT INTO work_orders (tenant_id, asset_id, status, origin, priority, description)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, created_at, updated_at
+		INSERT INTO work_orders (tenant_id, asset_id, assigned_user_id, status, origin, priority, title, description)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, readable_id, created_at
 	`
 
 	return r.db.QueryRow(ctx, query,
-		wo.TenantID, wo.AssetID, wo.Status, wo.Origin, wo.Priority, wo.Description,
-	).Scan(&wo.ID, &wo.CreatedAt, &wo.UpdatedAt)
+		wo.TenantID, wo.AssetID, wo.AssignedUserID, wo.Status, wo.Origin, wo.Priority, wo.Title, wo.Description,
+	).Scan(&wo.ID, &wo.ReadableID, &wo.CreatedAt)
 }
 
-// Update modifies an existing work order
+// Update modifies an existing work order (v1.1 schema)
 func (r *WorkOrderRepository) Update(ctx context.Context, wo *model.WorkOrder) error {
 	query := `
 		UPDATE work_orders
-		SET status = $2, priority = $3, description = $4, updated_at = NOW()
+		SET status = $2, priority = $3, description = $4, title = $5
 		WHERE id = $1
-		RETURNING updated_at
 	`
 
-	return r.db.QueryRow(ctx, query,
-		wo.ID, wo.Status, wo.Priority, wo.Description,
-	).Scan(&wo.UpdatedAt)
+	_, err := r.db.Exec(ctx, query, wo.ID, wo.Status, wo.Priority, wo.Description, wo.Title)
+	return err
 }
 
 // UpdateStatus changes a work order's status
 func (r *WorkOrderRepository) UpdateStatus(ctx context.Context, id, status string) error {
-	query := `UPDATE work_orders SET status = $2, updated_at = NOW() WHERE id = $1`
+	query := `UPDATE work_orders SET status = $2 WHERE id = $1`
 	_, err := r.db.Exec(ctx, query, id, status)
 	return err
 }

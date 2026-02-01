@@ -4,32 +4,37 @@ import (
 	"time"
 )
 
-// WorkOrder represents a maintenance work order
-// Schema aligned with existing database structure
+// WorkOrder represents a maintenance work order (v1.1 schema)
 type WorkOrder struct {
-	ID          string    `json:"id"`
-	TenantID    string    `json:"tenantId"`
-	AssetID     *string   `json:"assetId"`
-	Status      string    `json:"status"`
-	Origin      string    `json:"origin"`
-	Priority    string    `json:"priority"`
-	Description *string   `json:"description"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID             string     `json:"id"`
+	TenantID       string     `json:"tenantId"`
+	ReadableID     *int       `json:"readableId,omitempty"`
+	AssetID        *string    `json:"assetId,omitempty"`
+	AssignedUserID *string    `json:"assignedUserId,omitempty"`
+	Status         string     `json:"status"`
+	Origin         string     `json:"origin"`
+	Priority       string     `json:"priority"`
+	Title          string     `json:"title"`
+	Description    *string    `json:"description,omitempty"`
+	StartedAt      *time.Time `json:"startedAt,omitempty"`
+	CompletedAt    *time.Time `json:"completedAt,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
 
 	// Computed/Joined fields
 	AssetName string `json:"assetName,omitempty"`
 }
 
-// WorkOrder Status enum values
+// WorkOrder Status constants (v1.1 schema)
 const (
-	WOStatusDraft      = "Draft"
-	WOStatusReady      = "Ready"
-	WOStatusInProgress = "In_Progress"
-	WOStatusClosed     = "Closed"
+	WOStatusRequested    = "Requested"
+	WOStatusApproved     = "Approved"
+	WOStatusInProgress   = "In_Progress"
+	WOStatusWorkComplete = "Work_Complete"
+	WOStatusClosed       = "Closed"
+	WOStatusCancelled    = "Cancelled"
 )
 
-// WorkOrder Priority enum values
+// WorkOrder Priority constants
 const (
 	WOPriorityLow      = "Low"
 	WOPriorityMedium   = "Medium"
@@ -37,11 +42,11 @@ const (
 	WOPriorityCritical = "Critical"
 )
 
-// WorkOrder Origin enum values
+// WorkOrder Origin constants (v1.1 schema)
 const (
-	WOOriginPM     = "PM"
-	WOOriginCM     = "CM"
-	WOOriginDefect = "Defect"
+	WOOriginPreventiveAuto = "Preventive_Auto"
+	WOOriginManualRequest  = "Manual_Request"
+	WOOriginDefectFollowup = "Defect_Followup"
 )
 
 // WorkOrderListParams for filtering and pagination

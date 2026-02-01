@@ -1,155 +1,310 @@
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+-- IOI AMMS - Master Database Schema (Final MVP)
+-- Version: 1.1
+-- Database: PostgreSQL 16+
+-- Migration: 000001_initial_schema
 
--- Enums
-CREATE TYPE user_role AS ENUM ('technician', 'supervisor', 'storeman', 'manager', 'admin');
+-- 0. EXTENSIONS
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-CREATE TYPE location_type AS ENUM ('Site', 'Building', 'Room', 'Zone');
+-- ==========================================
+-- MODULE 1: IDENTITY & ORG STRUCTURE
+-- ==========================================
 
-CREATE TYPE asset_status AS ENUM ('operational', 'maintenance', 'decommissioned', 'pending');
-
-CREATE TYPE asset_criticality AS ENUM ('high', 'medium', 'low');
-
-CREATE TYPE wo_status AS ENUM ('Draft', 'Ready', 'In_Progress', 'Closed');
-
-CREATE TYPE wo_origin AS ENUM ('PM', 'CM', 'Defect');
-
-CREATE TYPE wo_priority AS ENUM ('Low', 'Medium', 'High', 'Critical');
-
-CREATE TYPE sr_status AS ENUM ('Pending', 'Rejected', 'Converted');
-
-CREATE TYPE transfer_status AS ENUM ('In_Transit', 'Received', 'Disputed');
-
--- 1. Core & Identity
+-- 1. TENANTS (The Client Container)
 CREATE TABLE tenants (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
-    name TEXT NOT NULL,
-    settings JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    name VARCHAR(255) NOT NULL,
+    subdomain VARCHAR(100) UNIQUE,
+    settings JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
+-- 2. ORG UNITS (Recursive Functional Hierarchy)
+CREATE TABLE org_units (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
     tenant_id UUID REFERENCES tenants (id),
-    email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role user_role NOT NULL DEFAULT 'technician',
-    first_name TEXT,
-    last_name TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    parent_id UUID REFERENCES org_units (id),
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    cost_center_code VARCHAR(50),
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE audit_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
-    user_id UUID REFERENCES users (id),
-    action TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    entity_id UUID NOT NULL,
-    changes JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- 3. USERS (System Actors)
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    tenant_id UUID REFERENCES tenants (id),
+    org_unit_id UUID REFERENCES org_units (id),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(100),
+    role VARCHAR(50) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
--- 2. Living Registry (Locations & Assets)
+-- ==========================================
+-- MODULE 2: THE LIVING REGISTRY
+-- ==========================================
+
+-- 4. LOCATIONS (Recursive Physical Hierarchy)
 CREATE TABLE locations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
     tenant_id UUID REFERENCES tenants (id),
     parent_id UUID REFERENCES locations (id),
-    name TEXT NOT NULL,
-    type location_type NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- 5. ASSETS (The Operational Truth)
 CREATE TABLE assets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
     tenant_id UUID REFERENCES tenants (id),
+    parent_id UUID REFERENCES assets (id),
     location_id UUID REFERENCES locations (id),
-    name TEXT NOT NULL,
-    client_code TEXT,
-    status asset_status NOT NULL DEFAULT 'pending',
-    criticality asset_criticality NOT NULL DEFAULT 'medium',
-    model TEXT,
-    serial_number TEXT,
-    manufacturer TEXT,
+    org_unit_id UUID REFERENCES org_units (id),
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'Draft',
+    is_field_related BOOLEAN DEFAULT TRUE,
+    is_field_verified BOOLEAN DEFAULT FALSE,
+    manufacturer VARCHAR(100),
+    model_number VARCHAR(100),
+    specs JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 6. ASSET FINANCE (Sensitive Data - 1:1 Link)
+CREATE TABLE asset_finance (
+    asset_id UUID PRIMARY KEY REFERENCES assets (id) ON DELETE CASCADE,
     purchase_date DATE,
-    specifications JSONB DEFAULT '{}'::jsonb,
-    last_inspection TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    placed_in_service_date DATE,
+    warranty_expiry_date DATE,
+    currency VARCHAR(3) DEFAULT 'USD',
+    acquisition_cost DECIMAL(15, 2),
+    current_book_value DECIMAL(15, 2),
+    total_depreciation DECIMAL(15, 2),
+    vendor_name VARCHAR(255),
+    erp_fixed_asset_id VARCHAR(100),
+    erp_status VARCHAR(50),
+    last_synced_at TIMESTAMP
 );
 
--- 3. Maintenance Engine
-CREATE TABLE pm_schedules (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
-    asset_id UUID REFERENCES assets (id),
-    name TEXT NOT NULL,
-    interval_days INT,
-    interval_hours INT,
-    last_performed TIMESTAMP WITH TIME ZONE,
-    next_due TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- 7. ASSET IDENTITIES (Search Keys)
+CREATE TABLE asset_identities (
+    asset_id UUID REFERENCES assets (id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL,
+    value VARCHAR(255) NOT NULL,
+    is_primary BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (asset_id, type)
 );
 
-CREATE TABLE work_orders (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
+CREATE UNIQUE INDEX idx_ident_value ON asset_identities (value);
+
+-- 8. ASSETS STAGING (The Import Buffer)
+CREATE TABLE assets_staging (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
     tenant_id UUID REFERENCES tenants (id),
-    asset_id UUID REFERENCES assets (id),
-    assignee_id UUID REFERENCES users (id),
-    status wo_status NOT NULL DEFAULT 'Draft',
-    priority wo_priority NOT NULL DEFAULT 'Medium',
-    origin wo_origin NOT NULL,
+    batch_id UUID,
+    import_status VARCHAR(50) DEFAULT 'Pending',
+    raw_data JSONB,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ==========================================
+-- MODULE 3: MAINTENANCE ENGINE
+-- ==========================================
+
+-- 9. ASSET METERS (Current Stats)
+CREATE TABLE asset_meters (
+    asset_id UUID PRIMARY KEY REFERENCES assets (id) ON DELETE CASCADE,
+    current_run_hours DECIMAL(10, 2) DEFAULT 0,
+    current_odometer_km DECIMAL(10, 2) DEFAULT 0,
+    last_updated_at TIMESTAMP,
+    updated_by_user_id UUID
+);
+
+-- 10. CHECKLIST TEMPLATES (Reusable Definitions)
+CREATE TABLE checklist_templates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    tenant_id UUID REFERENCES tenants (id),
+    title VARCHAR(255) NOT NULL,
     description TEXT,
-    due_date TIMESTAMP WITH TIME ZONE,
-    started_at TIMESTAMP WITH TIME ZONE,
-    closed_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    items JSONB DEFAULT '[]',
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE wo_tasks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
-    work_order_id UUID REFERENCES work_orders (id) ON DELETE CASCADE,
-    description TEXT NOT NULL,
-    completed BOOLEAN DEFAULT FALSE,
-    completed_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE service_requests (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
-    tenant_id UUID REFERENCES tenants (id),
+-- 11. PM SCHEDULES (The Hybrid Trigger)
+CREATE TABLE pm_schedules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
     asset_id UUID REFERENCES assets (id),
-    requester_id UUID REFERENCES users (id),
-    status sr_status NOT NULL DEFAULT 'Pending',
-    description TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    checklist_template_id UUID REFERENCES checklist_templates (id),
+    title VARCHAR(255) NOT NULL,
+    interval_days INT,
+    interval_run_hours INT,
+    interval_odometer_km INT,
+    last_performed_date DATE,
+    last_performed_run_hours DECIMAL(10, 2),
+    last_performed_odometer_km DECIMAL(10, 2),
+    suppress_pm_ids JSONB DEFAULT '[]',
+    is_active BOOLEAN DEFAULT TRUE
 );
 
--- 4. Inventory & Logistics
-CREATE TABLE parts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
+-- 12. WORK ORDERS (Single Stream Transaction)
+CREATE TABLE work_orders (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
     tenant_id UUID REFERENCES tenants (id),
-    name TEXT NOT NULL,
-    sku TEXT,
-    min_stock INT DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    readable_id SERIAL,
+    asset_id UUID REFERENCES assets (id),
+    assigned_user_id UUID REFERENCES users (id),
+    status VARCHAR(50) NOT NULL DEFAULT 'Requested',
+    origin VARCHAR(50) NOT NULL,
+    priority VARCHAR(20) DEFAULT 'Medium',
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- 13. WO TASKS (Execution Steps)
+CREATE TABLE wo_tasks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    work_order_id UUID REFERENCES work_orders (id) ON DELETE CASCADE,
+    description VARCHAR(255) NOT NULL,
+    task_type VARCHAR(50) NOT NULL,
+    is_mandatory BOOLEAN DEFAULT FALSE,
+    sort_order INT DEFAULT 0,
+    result_value TEXT,
+    result_notes TEXT,
+    photo_url TEXT,
+    completed_at TIMESTAMP,
+    completed_by_user_id UUID REFERENCES users (id)
+);
+
+CREATE INDEX idx_wo_tasks_result ON wo_tasks (work_order_id, result_value);
+
+-- 14. WO LOGS (Time & Materials)
+CREATE TABLE wo_labor_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    work_order_id UUID REFERENCES work_orders (id),
+    user_id UUID REFERENCES users (id),
+    hours_spent DECIMAL(5, 2) NOT NULL,
+    date_performed DATE DEFAULT CURRENT_DATE,
+    comment TEXT
+);
+
+CREATE TABLE wo_resource_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    work_order_id UUID REFERENCES work_orders (id),
+    part_name VARCHAR(255),
+    part_id UUID,
+    quantity DECIMAL(10, 2) NOT NULL,
+    source VARCHAR(50) DEFAULT 'Warehouse'
+);
+
+-- ==========================================
+-- MODULE 4: LOGISTICS & AUDIT
+-- ==========================================
+
+-- 15. PARTS CATALOG (Item Master)
+CREATE TABLE parts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    tenant_id UUID REFERENCES tenants (id),
+    sku VARCHAR(100) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(50),
+    uom VARCHAR(20) DEFAULT 'Each',
+    min_stock_level DECIMAL(10, 2) DEFAULT 0,
+    is_stock_item BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_parts_sku ON parts (tenant_id, sku);
+
+-- 16. INVENTORY STOCK (Warehouse Quantities)
 CREATE TABLE inventory_stock (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    tenant_id UUID REFERENCES tenants (id),
     part_id UUID REFERENCES parts (id),
     location_id UUID REFERENCES locations (id),
-    quantity INT NOT NULL DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    quantity_on_hand DECIMAL(10, 2) DEFAULT 0,
+    bin_label VARCHAR(50),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Create indexes
+-- 17. INVENTORY WALLETS (Technician Stock)
+CREATE TABLE inventory_wallets (
+    user_id UUID REFERENCES users (id),
+    part_id UUID REFERENCES parts (id),
+    qty_held DECIMAL(10, 2) DEFAULT 0,
+    last_updated_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (user_id, part_id)
+);
+
+-- 18. ASSET MOVEMENTS (Chain of Custody)
+CREATE TABLE asset_movements (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    asset_id UUID REFERENCES assets (id),
+    from_location_id UUID REFERENCES locations (id),
+    to_location_id UUID REFERENCES locations (id),
+    status VARCHAR(50) DEFAULT 'In_Transit',
+    transfer_type VARCHAR(50),
+    shipment_ref VARCHAR(100),
+    created_by_user_id UUID,
+    received_by_user_id UUID,
+    created_at TIMESTAMP DEFAULT NOW(),
+    received_at TIMESTAMP
+);
+
+-- 19. VERIFICATION CAMPAIGNS (Audits)
+CREATE TABLE verification_campaigns (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    tenant_id UUID REFERENCES tenants (id),
+    title VARCHAR(255),
+    status VARCHAR(50) DEFAULT 'Active',
+    target_org_unit_id UUID,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE verification_entries (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    campaign_id UUID REFERENCES verification_campaigns (id),
+    asset_id UUID REFERENCES assets (id),
+    status VARCHAR(50) DEFAULT 'Pending',
+    verified_at TIMESTAMP,
+    gps_lat DECIMAL(10, 8),
+    gps_long DECIMAL(11, 8)
+);
+
+-- 20. ATTACHMENTS (Polymorphic)
+CREATE TABLE attachments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    tenant_id UUID REFERENCES tenants (id),
+    parent_type VARCHAR(50) NOT NULL,
+    parent_id UUID NOT NULL,
+    file_url TEXT NOT NULL,
+    file_type VARCHAR(50),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 21. AUDIT LOGS (System Tracking)
+CREATE TABLE audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    tenant_id UUID REFERENCES tenants (id),
+    user_id UUID REFERENCES users (id),
+    action VARCHAR(50) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id UUID NOT NULL,
+    changes JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ==========================================
+-- INDEXES
+-- ==========================================
 CREATE INDEX idx_users_email ON users (email);
 
 CREATE INDEX idx_users_tenant ON users (tenant_id);
@@ -160,8 +315,42 @@ CREATE INDEX idx_assets_status ON assets (status);
 
 CREATE INDEX idx_assets_location ON assets (location_id);
 
+CREATE INDEX idx_assets_org_unit ON assets (org_unit_id);
+
 CREATE INDEX idx_work_orders_tenant ON work_orders (tenant_id);
 
 CREATE INDEX idx_work_orders_status ON work_orders (status);
 
-CREATE INDEX idx_work_orders_assignee ON work_orders (assignee_id);
+CREATE INDEX idx_work_orders_asset ON work_orders (asset_id);
+
+CREATE INDEX idx_audit_logs_entity ON audit_logs (entity_type, entity_id);
+
+-- ==========================================
+-- SEED DATA
+-- ==========================================
+INSERT INTO
+    tenants (id, name, subdomain, settings)
+VALUES (
+        '00000000-0000-0000-0000-000000000001',
+        'IOI Demo',
+        'ioi-demo',
+        '{"agile_mode": true}'
+    );
+
+INSERT INTO
+    users (
+        id,
+        tenant_id,
+        email,
+        password_hash,
+        full_name,
+        role
+    )
+VALUES (
+        '00000000-0000-0000-0000-000000000002',
+        '00000000-0000-0000-0000-000000000001',
+        'admin@ioi.com',
+        '$2a$10$N9qo8uLOickgx2ZMRZoMy.MqrqAOj/hBT4nC0pYxjqkDqfSGmC5.m',
+        'Admin User',
+        'Admin'
+    );

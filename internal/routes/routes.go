@@ -10,6 +10,7 @@ import (
 	"ioi-amms/internal/handler"
 	"ioi-amms/internal/middleware"
 	"ioi-amms/internal/repository"
+	"ioi-amms/internal/service"
 	"ioi-amms/internal/storage"
 
 	"github.com/go-chi/chi/v5"
@@ -34,18 +35,18 @@ func NewRouter(db database.Service, cfg *config.Config) http.Handler {
 	assetRepo := repository.NewAssetRepository(db.Pool())
 	woRepo := repository.NewWorkOrderRepository(db.Pool())
 	locationRepo := repository.NewLocationRepository(db.Pool())
+	userRepo := repository.NewUserRepository(db.Pool()) // Already used below, lifting up
+	tenantRepo := repository.NewTenantRepository(db.Pool())
+	auditRepo := repository.NewAuditRepository(db.Pool())
+	inventoryRepo := repository.NewInventoryRepository(db.Pool())
+	analyticsRepo := repository.NewAnalyticsRepository(db.Pool()) // [NEW]
 
-	// Initialize handlers
-	assetHandler := handler.NewAssetHandler(assetRepo)
-	woHandler := handler.NewWorkOrderHandler(woRepo)
-	locationHandler := handler.NewLocationHandler(locationRepo)
+	// Initialize services
+	// Initialize services
+	// Initialize services
+	auditService := service.NewAuditService(auditRepo)
 
-	// Create user handler with existing repository (userRepo was used in auth, but it's local in that func)
-	// We should initialize userRepo here at top level
-	userRepo := repository.NewUserRepository(db.Pool())
-	userHandler := handler.NewUserHandler(userRepo)
-
-	// Initialize storage service (optional, log warning if unavailable)
+	// Initialize storage service (moved up for dependency)
 	var fileHandler *handler.FileHandler
 	storageService, err := storage.NewService(cfg)
 	if err != nil {
@@ -54,10 +55,20 @@ func NewRouter(db database.Service, cfg *config.Config) http.Handler {
 		fileHandler = handler.NewFileHandler(storageService, cfg)
 	}
 
+	// Initialize handlers
+	assetHandler := handler.NewAssetHandler(assetRepo, auditService)
+	woHandler := handler.NewWorkOrderHandler(woRepo)
+	locationHandler := handler.NewLocationHandler(locationRepo)
+	userHandler := handler.NewUserHandler(userRepo)
+	tenantHandler := handler.NewTenantHandler(tenantRepo)
+	auditHandler := handler.NewAuditHandler(auditRepo)
+	inventoryHandler := handler.NewInventoryHandler(inventoryRepo)
+	analyticsHandler := handler.NewAnalyticsHandler(analyticsRepo)
+	systemHandler := SystemHealthHandler(db, storageService)
+
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
 		// Auth routes (public)
-		// RegisterAuthRoutes creates its own userRepo, which is fine
 		RegisterAuthRoutes(r, db)
 
 		// Protected routes (require authentication + tenant isolation)
@@ -77,10 +88,37 @@ func NewRouter(db database.Service, cfg *config.Config) http.Handler {
 			// User routes
 			userHandler.RegisterRoutes(r)
 
+			// Inventory routes (Parts, Stock, Wallets)
+			inventoryHandler.RegisterRoutes(r)
+
+			// Analytics Dashboard (New)
+			analyticsHandler.RegisterRoutes(r)
+
 			// File routes (if storage available)
 			if fileHandler != nil {
 				fileHandler.RegisterRoutes(r)
 			}
+
+			// Admin Routes
+			r.Group(func(r chi.Router) {
+				// Tenant Settings (Admin)
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequirePermission(middleware.PermissionTenantSettings))
+					tenantHandler.RegisterRoutes(r)
+				})
+
+				// Audit Logs (Admin)
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequirePermission(middleware.PermissionAuditRead))
+					r.Get("/audit-logs", auditHandler.List)
+				})
+
+				// System Health (Admin)
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequirePermission(middleware.PermissionSystemHealth))
+					r.Get("/system/health", systemHandler)
+				})
+			})
 		})
 	})
 
