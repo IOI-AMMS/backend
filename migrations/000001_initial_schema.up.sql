@@ -350,7 +350,7 @@ VALUES (
         '00000000-0000-0000-0000-000000000002',
         '00000000-0000-0000-0000-000000000001',
         'admin@ioi.com',
-        '$2a$10$N9qo8uLOickgx2ZMRZoMy.MqrqAOj/hBT4nC0pYxjqkDqfSGmC5.m',
+        '$2a$10$5qmcTxHBdFSqso7/Pazx/uVM1eO8OPMwyQnuCqzstHjAJ7FV2urOS',
         'Admin User',
         'Admin'
     );
